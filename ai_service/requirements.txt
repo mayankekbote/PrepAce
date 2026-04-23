@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+PyPDF2
+groq
+python-multipart
+pydantic
+typing
+python-dotenv

@@ -1,0 +1,162 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-primary: #0c0c0e;      /* Lighter Grayish Black */
+  --color-secondary: #16161a;    /* Soft Dark Gray */
+  --color-card: rgba(22, 22, 26, 0.8);
+  --color-accent: #D9FF00;
+  --color-accent-hover: #E6FF4D;
+  --color-error: #FF3333;
+  --color-success: #00FF99;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A0A0A0;
+  --color-divider: rgba(255, 255, 255, 0.04);
+
+  /* Fonts */
+  --font-space: "'Space Grotesk'", sans-serif;
+  --font-dm: "'DM Sans'", sans-serif;
+  --font-mono: "'JetBrains Mono'", monospace;
+}
+
+:root {
+  background-color: #0c0c0e;
+  color: #FFFFFF;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-dm);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0c0c0e;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-space);
+  letter-spacing: -0.02em;
+}
+
+/* --- Next-Level Aesthetics --- */
+
+/* Ambient Glow Background */
+.ambient-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background: radial-gradient(circle at 50% -20%, rgba(217, 255, 0, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at -10% 50%, rgba(217, 255, 0, 0.05) 0%, transparent 40%),
+              radial-gradient(circle at 110% 80%, rgba(217, 255, 0, 0.05) 0%, transparent 40%);
+  filter: blur(100px);
+  pointer-events: none;
+}
+
+/* Refined Scanline */
+.scanline-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    transparent 50%,
+    rgba(217, 255, 0, 0.02) 50%,
+    rgba(217, 255, 0, 0.02)
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.3;
+}
+
+/* Tech Grid */
+.tech-grid {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+}
+
+/* Glassmorphism Card */
+.glass-card {
+  background: rgba(15, 15, 15, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Glowing Text */
+.text-glow {
+  text-shadow: 0 0 10px rgba(217, 255, 0, 0.3),
+               0 0 20px rgba(217, 255, 0, 0.1);
+}
+
+/* Glitch Animation for Logo */
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+.hover-glitch:hover {
+  animation: glitch 0.3s cubic-bezier(.25,.46,.45,.94) both infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+
+/* Loading Spinner */
+.spinner {
+  border: 2px solid rgba(217, 255, 0, 0.1);
+  border-left-color: var(--color-accent);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Input Focus Animation */
+.input-focus-glow:focus {
+  box-shadow: 0 0 15px rgba(217, 255, 0, 0.15);
+  border-color: var(--color-accent);
+}
