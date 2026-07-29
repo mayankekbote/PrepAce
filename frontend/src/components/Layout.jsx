@@ -10,15 +10,14 @@ export const Layout = ({ children }) => {
   const showSidebar = user && !noSidebarPaths.includes(window.location.pathname);
 
   return (
-    <div className="relative min-h-screen bg-primary text-white overflow-hidden flex">
-      {/* Design Layers */}
+    <div className="relative min-h-screen bg-primary text-white flex">
+      {/* Optimized Ambient Design Layers */}
       <div className="ambient-glow"></div>
       <div className="tech-grid"></div>
-      <div className="scanline-overlay"></div>
-      
+
       {showSidebar && <Sidebar />}
 
-      <div className="relative z-10 flex flex-col flex-grow min-h-screen overflow-y-auto">
+      <div className="relative z-10 flex flex-col flex-grow min-h-screen">
         {!showSidebar && (
           <header className="py-10 text-center">
             <h1 className="text-4xl font-bold tracking-tighter text-glow flex items-center justify-center gap-2">

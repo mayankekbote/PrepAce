@@ -5,7 +5,7 @@
   /* Colors */
   --color-primary: #0c0c0e;      /* Lighter Grayish Black */
   --color-secondary: #16161a;    /* Soft Dark Gray */
-  --color-card: rgba(22, 22, 26, 0.8);
+  --color-card: #131317;
   --color-accent: #D9FF00;
   --color-accent-hover: #E6FF4D;
   --color-error: #FF3333;
@@ -42,85 +42,48 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: -0.02em;
 }
 
-/* --- Next-Level Aesthetics --- */
+/* --- Optimized Performance Aesthetics (Zero Scroll/GPU Jank) --- */
 
-/* Ambient Glow Background */
+/* Ultra-light Ambient Glow Background (No Filter Blur) */
 .ambient-glow {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   z-index: -1;
-  background: radial-gradient(circle at 50% -20%, rgba(217, 255, 0, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at -10% 50%, rgba(217, 255, 0, 0.05) 0%, transparent 40%),
-              radial-gradient(circle at 110% 80%, rgba(217, 255, 0, 0.05) 0%, transparent 40%);
-  filter: blur(100px);
+  background: radial-gradient(circle at 50% 0%, rgba(217, 255, 0, 0.05) 0%, transparent 60%);
   pointer-events: none;
+  transform: translateZ(0);
 }
 
-/* Refined Scanline */
-.scanline-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    transparent 50%,
-    rgba(217, 255, 0, 0.02) 50%,
-    rgba(217, 255, 0, 0.02)
-  );
-  background-size: 100% 4px;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.3;
-}
-
-/* Tech Grid */
+/* Lightweight Tech Grid (No Mask Filter) */
 .tech-grid {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   z-index: -1;
   background-image: 
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 40px 40px;
-  mask-image: radial-gradient(circle at center, black, transparent 80%);
+  pointer-events: none;
+  transform: translateZ(0);
 }
 
-/* Glassmorphism Card */
+/* Glassmorphism Card (Hardware Accelerated, Fast Repaint) */
 .glass-card {
-  background: rgba(15, 15, 15, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  background: #131317;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  transform: translateZ(0);
 }
 
 /* Glowing Text */
 .text-glow {
-  text-shadow: 0 0 10px rgba(217, 255, 0, 0.3),
-               0 0 20px rgba(217, 255, 0, 0.1);
-}
-
-/* Glitch Animation for Logo */
-@keyframes glitch {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 2px); }
-  40% { transform: translate(-2px, -2px); }
-  60% { transform: translate(2px, 2px); }
-  80% { transform: translate(2px, -2px); }
-  100% { transform: translate(0); }
-}
-
-.hover-glitch:hover {
-  animation: glitch 0.3s cubic-bezier(.25,.46,.45,.94) both infinite;
+  text-shadow: 0 0 10px rgba(217, 255, 0, 0.3);
 }
 
 /* Custom Scrollbar */
@@ -143,7 +106,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Loading Spinner */
 .spinner {
-  border: 2px solid rgba(217, 255, 0, 0.1);
+  border: 2px solid rgba(217, 255, 0, 0.2);
   border-left-color: var(--color-accent);
   border-radius: 50%;
   width: 20px;
@@ -155,8 +118,7 @@ h1, h2, h3, h4, h5, h6 {
   to { transform: rotate(360deg); }
 }
 
-/* Input Focus Animation */
+/* Input Focus Glow */
 .input-focus-glow:focus {
-  box-shadow: 0 0 15px rgba(217, 255, 0, 0.15);
   border-color: var(--color-accent);
 }

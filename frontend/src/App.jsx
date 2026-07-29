@@ -13,6 +13,8 @@ import UpdateResumePage from "./pages/UpdateResumePage";
 import UpdateDetailsPage from "./pages/UpdateDetailsPage";
 import ResumeAnalysisPage from "./pages/ResumeAnalysisPage";
 import InterviewPrepPage from "./pages/InterviewPrepPage";
+import InterviewRoomPage from "./pages/InterviewRoomPage";
+import InterviewResultsPage from "./pages/InterviewResultsPage";
 
 const App = () => {
   return (
@@ -29,6 +31,8 @@ const App = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/analysis" element={<ResumeAnalysisPage />} />
             <Route path="/interview" element={<InterviewPrepPage />} />
+            <Route path="/interview/:sessionId" element={<InterviewRoomPage />} />
+            <Route path="/interview/:sessionId/result" element={<InterviewResultsPage />} />
             <Route path="/update-resume" element={<UpdateResumePage />} />
             <Route path="/update-details" element={<UpdateDetailsPage />} />
             <Route path="/" element={<Navigate to="/login" replace />} />
