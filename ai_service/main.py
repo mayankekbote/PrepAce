@@ -126,7 +126,7 @@ async def analyze_resume(file: UploadFile = File(...), targetRole: str = "Softwa
             try:
                 print(f"DEBUG: Sending request to Groq (Attempt {attempt + 1})...")
                 completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="openai/gpt-oss-120b",
                     messages=[
                         {
                             "role": "system", 
@@ -161,11 +161,17 @@ class CandidateProfileDTO(BaseModel):
     skills: Optional[Dict[str, List[str]]] = None
     projects: Optional[List[Dict[str, Any]]] = None
 
+class WeakQuestionDTO(BaseModel):
+    topic: Optional[str] = None
+    questionText: Optional[str] = None
+    previousScore: Optional[float] = None
+
 class QuestionGenerationRequest(BaseModel):
     candidateProfile: CandidateProfileDTO
     interviewType: str = "TECHNICAL"
     difficulty: str = "MEDIUM"
     totalQuestions: int = 5
+    weakQuestionsToRetry: Optional[List[WeakQuestionDTO]] = []
 
 class GeneratedQuestion(BaseModel):
     sequence: int
@@ -198,13 +204,37 @@ class EvaluationAndNextQuestionResponse(BaseModel):
     answerScore: float
     correctnessScore: float
     relevanceScore: float
-    depthScore: float
+    depthScore: Optional[float] = 7.0
     clarityScore: float
     shortEvaluationSummary: str
     detectedConcepts: List[str]
     nextAction: str
     nextQuestion: str
     nextTopic: str
+
+def get_system_persona(interview_type: str) -> str:
+    itype = (interview_type or "TECHNICAL").upper()
+    if itype == "HR":
+        return (
+            "You are an expert HR professional and talent acquisition partner responsible for conducting realistic HR interview rounds. "
+            "You assess personality, communication, self-awareness, professionalism, motivation, cultural fit, work ethic, adaptability, "
+            "decision-making, pressure handling, teamwork, conflict resolution, honesty, and career alignment. "
+            "For freshers, you leverage academics, college projects, internships, and extracurriculars. "
+            "For experienced candidates, you evaluate professional responsibilities, work ethic, and career transitions."
+        )
+    elif itype == "MANAGERIAL":
+        return (
+            "You are a seasoned Hiring Manager and Engineering Leader conducting a Managerial Round (MR) interview. "
+            "You evaluate project ownership, accountability, leadership potential, teamwork, conflict resolution, decision-making under ambiguity, "
+            "structured problem-solving, prioritization, time management, handling unrealistic deadlines, escalation vs independence, "
+            "trade-offs between speed and quality, business impact, and stakeholder communication. "
+            "You prioritize realistic behavioral and situational scenarios over theoretical textbook questions."
+        )
+    else:
+        return (
+            "You are a senior technical interviewer and principal architect evaluating technical depth, system architecture, "
+            "code quality, algorithms, performance optimization, and engineering trade-offs."
+        )
 
 @app.post("/generate-interview-questions", response_model=GeneratedQuestionPoolResponse)
 async def generate_interview_questions(
@@ -214,16 +244,62 @@ async def generate_interview_questions(
     if x_internal_secret and x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=401, detail="Invalid internal service secret")
 
-    print(f"DEBUG: Generating questions for role: {request.candidateProfile.targetRole}, type: {request.interviewType}, difficulty: {request.difficulty}")
+    print(f"DEBUG: Generating questions for role: {request.candidateProfile.targetRole}, type: {request.interviewType}, difficulty: {request.difficulty}, weakQuestionsCount: {len(request.weakQuestionsToRetry or [])}")
 
     skills_str = json.dumps(request.candidateProfile.skills or {})
     projects_str = json.dumps(request.candidateProfile.projects or [])
+    itype = request.interviewType.upper()
+
+    weak_questions_instruction = ""
+    if request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0:
+        weak_list_json = json.dumps([wq.model_dump() for wq in request.weakQuestionsToRetry])
+        weak_questions_instruction = f"""
+        ### Unanswered / Weak Questions from Candidate's Previous Tests (Score < 3.5 or Skipped):
+        {weak_list_json}
+
+        CRITICAL REQUIREMENT FOR SEQUENCE 1:
+        The candidate struggled with or skipped the above question(s) in their past test.
+        For sequence 1 (first question), you MUST re-ask or re-frame the top weak question from this list to check if they have improved.
+        Set "questionKind": "RETRY" for sequence 1.
+        """
+
+    if itype == "HR":
+        type_specific_guidance = """
+        ### HR Round Focus Guidelines:
+        - Generate questions that assess personality, communication, self-awareness, motivation, career goals, cultural fit, work ethic, adaptability, working under pressure, deadlines, failures, conflict with teammates, and feedback.
+        - For freshers/early career: Incorporate college projects, internships, group activities, academic choices, and learning experiences.
+        - For experienced candidates: Incorporate work history, career transitions, professional relationships, handling stress, and workplace ethics.
+        - Focus on realistic behavioral and situational questions requiring specific actions and lessons learned.
+        """
+        default_topic_seeds = ["Career Motivation & Role Alignment", "Teamwork & Conflict Resolution", "Adaptability & Pressure Handling", "Ownership & Work Ethic", "Personal Growth & Feedback"]
+        fallback_topic = "Career Motivation & Alignment"
+        fallback_text = f"Welcome to your HR round for the {request.candidateProfile.targetRole} role. To start, can you introduce yourself and explain what motivated you to apply for this role and how your background fits?"
+
+    elif itype == "MANAGERIAL":
+        type_specific_guidance = """
+        ### Managerial Round (MR) Focus Guidelines:
+        - Generate questions focusing on project ownership, accountability, leadership potential, teamwork, decision-making under ambiguity, prioritization, handling tight deadlines, mistakes/failures, escalation vs independence, trade-offs between speed and quality, and stakeholder communication.
+        - Create realistic workplace scenarios (e.g. scope changes, competing priorities, incomplete information, difficult teammates, trade-offs).
+        - Evaluate whether the candidate takes responsibility vs shifting blame, knows when to act independently vs escalate, and communicates risks effectively.
+        """
+        default_topic_seeds = ["Project Ownership & Accountability", "Prioritization & Time Management", "Handling Ambiguity & Failure", "Conflict Resolution & Stakeholders", "Decision Making & Trade-offs"]
+        fallback_topic = "Project Ownership & Accountability"
+        fallback_text = f"Welcome to your Managerial Round for the {request.candidateProfile.targetRole} role. Can you describe a scenario where you took full ownership of a challenging deliverable under tight deadlines or changing requirements?"
+
+    else: # TECHNICAL
+        type_specific_guidance = """
+        ### Technical Round Focus Guidelines:
+        - Generate questions prioritizing technical implementation, system design, architectural trade-offs, performance optimization, and claimed skills/projects.
+        """
+        default_topic_seeds = ["System Architecture & Design", "Performance Optimization", "Database Management", "Security & Reliability", "Code Quality & Patterns"]
+        fallback_topic = "Technical Architecture"
+        fallback_text = f"Can you walk me through your recent project work for the {request.candidateProfile.targetRole} role, highlighting your key technical contributions?"
 
     prompt = f"""
-    You are a senior technical interviewer designing a mock interview for a candidate.
+    {get_system_persona(itype)}
 
     Candidate Target Role: {request.candidateProfile.targetRole}
-    Interview Type: {request.interviewType} (TECHNICAL, MANAGERIAL, HR)
+    Interview Focus Type: {request.interviewType}
     Difficulty Level: {request.difficulty} (EASY, MEDIUM, HARD)
     Total Questions Requested: {request.totalQuestions}
 
@@ -231,23 +307,33 @@ async def generate_interview_questions(
     - Categorized Skills: {skills_str}
     - Significant Projects & Contributions: {projects_str}
 
+    {type_specific_guidance}
+    {weak_questions_instruction}
+
+    ### CRITICAL QUESTION QUALITY RULES:
+    1. Write genuine, authentic, realistic interview questions as spoken by a senior human interviewer.
+    2. NEVER include artificial prefixes, robotic headers, or generic template phrases such as "No problem, let's switch to another topic: ..." or "Can you walk me through your understanding of core concepts in ...".
+    3. For HR: Ask direct, natural behavioral questions (e.g. tell me about yourself, strengths/weaknesses, teamwork conflicts, handling pressure/stress, motivation for the role, receiving criticism).
+    4. For MANAGERIAL: Ask direct situational questions (e.g. project ownership under tight deadlines, handling scope ambiguity, balancing speed vs quality, handling mistakes, stakeholder alignment).
+    5. For TECHNICAL: Ask direct architectural & engineering scenario questions based on their projects and claimed skills.
+
     ### Task:
-    1. Generate an array of at least 5 topic seeds ('topicSeeds') covering architectural, technical, or role-specific subjects relevant to this candidate.
-    2. Generate an array of {request.totalQuestions} interview questions ('questions') prioritizing the candidate's actual projects, claimed skills, and target role concepts.
-       For sequence 1 (first question), make it an INITIAL foundation question about one of their specific projects or claimed technologies.
-       For subsequent sequences (2 to {request.totalQuestions}), generate tailored questions exploring deeper trade-offs or scenarios.
+    1. Generate an array of at least 5 relevant topic seeds ('topicSeeds').
+    2. Generate an array of {request.totalQuestions} interview questions ('questions') tailored to the interview focus type ({request.interviewType}).
+       If weak questions were provided above, sequence 1 MUST be a RETRY question ("questionKind": "RETRY"). Otherwise, sequence 1 is an INITIAL question.
+       For subsequent sequences (2 to {request.totalQuestions}), generate tailored behavioral, situational, or technical trade-off questions.
 
     ### Return ONLY valid JSON in this exact structure:
     {{
-        "topicSeeds": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"],
+        "topicSeeds": {json.dumps(default_topic_seeds)},
         "questions": [
             {{
                 "sequence": 1,
-                "topic": "Project Architecture",
+                "topic": "{fallback_topic}",
                 "questionText": "Question text...",
                 "questionType": "OPEN_ENDED",
                 "difficulty": "{request.difficulty}",
-                "questionKind": "INITIAL"
+                "questionKind": "{"RETRY" if (request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0) else "INITIAL"}"
             }}
         ]
     }}
@@ -257,11 +343,11 @@ async def generate_interview_questions(
     for attempt in range(max_retries + 1):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert technical interviewer. You only output strict, valid JSON matching the requested schema."
+                        "content": f"{get_system_persona(itype)} You output strict, valid JSON matching the requested schema."
                     },
                     {"role": "user", "content": prompt}
                 ],
@@ -272,16 +358,23 @@ async def generate_interview_questions(
         except Exception as e:
             print(f"ERROR generating interview questions (Attempt {attempt + 1}): {e}")
             if attempt == max_retries:
+                fallback_kind = "INITIAL"
+                if request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0:
+                    top_weak = request.weakQuestionsToRetry[0]
+                    fallback_topic = top_weak.topic or fallback_topic
+                    fallback_text = top_weak.questionText or fallback_text
+                    fallback_kind = "RETRY"
+
                 return {
-                    "topicSeeds": ["System Architecture", "Performance Optimization", "Database Management", "Security", "Code Quality"],
+                    "topicSeeds": default_topic_seeds,
                     "questions": [
                         {
                             "sequence": 1,
-                            "topic": "Technical Implementation",
-                            "questionText": f"Can you walk me through your recent project work for the {request.candidateProfile.targetRole} role, highlighting your key technical contributions?",
+                            "topic": fallback_topic,
+                            "questionText": fallback_text,
                             "questionType": "OPEN_ENDED",
                             "difficulty": request.difficulty,
-                            "questionKind": "INITIAL"
+                            "questionKind": fallback_kind
                         }
                     ]
                 }
@@ -294,13 +387,30 @@ async def evaluate_and_next_question(
     if x_internal_secret and x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=401, detail="Invalid internal service secret")
 
-    print(f"DEBUG: Evaluating answer for seq {request.currentQuestion.sequence}, topic '{request.currentQuestion.topic}', followUpDepth: {request.currentTopicFollowUpDepth}")
+    print(f"DEBUG: Evaluating answer for seq {request.currentQuestion.sequence}, topic '{request.currentQuestion.topic}', type: {request.interviewType}")
 
     skills_str = json.dumps(request.candidateProfile.skills or {})
     projects_str = json.dumps(request.candidateProfile.projects or [])
+    itype = request.interviewType.upper()
+
+    eval_focus_instructions = ""
+    if itype == "HR":
+        eval_focus_instructions = """
+        - Evaluate response focusing on Communication & Clarity (clarityScore), Self-awareness & Role Alignment (relevanceScore), and Depth of Real Examples/Maturity (correctnessScore).
+        - Probe deeper on vague/generic answers. If candidate provided strong response, follow up with a deeper behavioral scenario.
+        """
+    elif itype == "MANAGERIAL":
+        eval_focus_instructions = """
+        - Evaluate response focusing on Ownership & Accountability (correctnessScore), Structured Problem Solving & Decision Rationale (relevanceScore), and Clarity & Stakeholder Awareness (clarityScore).
+        - Probe whether the candidate took personal responsibility vs shifting blame, and how they balanced trade-offs under constraints.
+        """
+    else:
+        eval_focus_instructions = """
+        - Evaluate response focusing on Technical Accuracy (correctnessScore), Technical Relevance (relevanceScore), and Engineering Clarity (clarityScore).
+        """
 
     prompt = f"""
-    You are a senior technical interviewer evaluating a candidate's live answer AND determining the next question in a single turn.
+    {get_system_persona(itype)}
 
     Candidate Role: {request.targetRole}
     Interview Type: {request.interviewType} (TECHNICAL, MANAGERIAL, HR)
@@ -318,28 +428,32 @@ async def evaluate_and_next_question(
     - Covered Topics So Far: {json.dumps(request.coveredTopics)}
     - Current Topic Follow-up Depth: {request.currentTopicFollowUpDepth} (Max allowed depth is 2)
 
-    ### Instructions:
+    ### Evaluation & Next Question Guidelines:
     1. Evaluate candidate's answer on a 0.0 to 10.0 scale:
-       - correctnessScore, relevanceScore, depthScore, clarityScore, and overall answerScore.
+       {eval_focus_instructions}
+       - correctnessScore (50% weight), relevanceScore (30% weight), clarityScore (20% weight).
+       - overall answerScore = (correctnessScore * 0.50) + (relevanceScore * 0.30) + (clarityScore * 0.20).
        - shortEvaluationSummary: Concise 1-2 sentence feedback.
-       - detectedConcepts: List of key technical/functional concepts detected in candidate's answer.
+       - detectedConcepts: List of key behavioral, managerial, or technical concepts detected.
 
     2. Decide nextAction:
-       - If answer is strong (score >= 7.5) AND currentTopicFollowUpDepth < 2: use 'FOLLOW_UP' (ask a deeper question based specifically on their answer).
-       - If answer is partial/vague (5.0 <= score < 7.5) AND currentTopicFollowUpDepth < 2: use 'CLARIFY' (ask one targeted probing question).
+       - If answer is strong (score >= 7.5) AND currentTopicFollowUpDepth < 2: use 'FOLLOW_UP' (ask a deeper probing question on their specific scenario/decision).
+       - If answer is partial/vague (5.0 <= score < 7.5) AND currentTopicFollowUpDepth < 2: use 'CLARIFY' (ask one targeted question forcing specific details).
        - If answer is weak/incorrect (score < 5.0): use 'SIMPLIFY' or 'SWITCH_TOPIC'.
-       - If currentTopicFollowUpDepth >= 2: use 'SWITCH_TOPIC' (transition to a brand new topic not in coveredTopics).
+       - If currentTopicFollowUpDepth >= 2: use 'SWITCH_TOPIC' (transition to a new topic not in coveredTopics).
 
-    3. Formulate nextQuestion text and nextTopic based on nextAction.
+    3. Formulate nextQuestion text and nextTopic aligned with the interview type ({request.interviewType}).
+       Make the question sound natural, direct, and conversational.
+       NEVER add robotic prefixes like "No problem, let's switch to another topic: ..." or "Can you walk me through your understanding of core concepts in ...".
 
     ### Return ONLY valid JSON in this exact structure:
     {{
-        "answerScore": 8.0,
+        "answerScore": 8.3,
         "correctnessScore": 8.5,
         "relevanceScore": 8.0,
         "depthScore": 7.5,
-        "clarityScore": 8.0,
-        "shortEvaluationSummary": "Clear technical explanation.",
+        "clarityScore": 8.5,
+        "shortEvaluationSummary": "Clear explanation with strong evidence of ownership.",
         "detectedConcepts": ["Concept 1", "Concept 2"],
         "nextAction": "FOLLOW_UP",
         "nextQuestion": "Next question text...",
@@ -351,11 +465,11 @@ async def evaluate_and_next_question(
     for attempt in range(max_retries + 1):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a senior technical interviewer. You only output strict, valid JSON matching the requested schema."
+                        "content": f"{get_system_persona(itype)} You only output strict, valid JSON matching the requested schema."
                     },
                     {"role": "user", "content": prompt}
                 ],
@@ -437,11 +551,10 @@ async def generate_final_feedback(
     - Difficulty: {request.difficulty}
 
     ### Deterministic Performance Metrics:
-    - Overall Score: {request.overallScore} / 100
-    - Technical Accuracy / Correctness: {request.correctnessScore} / 100
-    - Conceptual Depth: {request.depthScore} / 100
-    - Relevance: {request.relevanceScore} / 100
-    - Communication / Clarity: {request.clarityScore} / 100
+    - Overall Score: {request.overallScore} / 100 (50% Correctness, 30% Relevance, 20% Clarity)
+    - Technical Accuracy / Correctness (50% weight): {request.correctnessScore} / 100
+    - Relevance (30% weight): {request.relevanceScore} / 100
+    - Communication / Clarity (20% weight): {request.clarityScore} / 100
     - Questions Answered: {request.totalAnswered}
     - Questions Skipped / Unanswered: {request.totalSkipped}
 
@@ -469,13 +582,15 @@ async def generate_final_feedback(
     }}
     """
 
+    itype = (request.interviewType or "TECHNICAL").upper()
+
     try:
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a senior technical interviewer. You output strict, valid JSON matching the requested schema. Be concise and constructive."
+                    "content": f"{get_system_persona(itype)} You output strict, valid JSON matching the requested schema. Be concise and constructive."
                 },
                 {"role": "user", "content": prompt}
             ],

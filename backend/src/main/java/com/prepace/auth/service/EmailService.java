@@ -33,6 +33,8 @@ public class EmailService {
         sendEmail(toEmail, subject, content);
     }
 
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(EmailService.class);
+
     private void sendEmail(String toEmail, String subject, String content) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -41,8 +43,8 @@ public class EmailService {
             helper.setSubject(subject);
             helper.setText(content, true);
             mailSender.send(message);
-        } catch (MessagingException e) {
-            throw new RuntimeException("Failed to send email", e);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to send email to {}: {}", toEmail, e.getMessage());
         }
     }
 }

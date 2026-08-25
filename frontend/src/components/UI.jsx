@@ -31,7 +31,7 @@ export const Input = ({ label, error, className = "", ...props }) => {
       )}
       <div className="relative group">
         <input
-          className={`w-full bg-white/5 border ${error ? "border-error" : "border-white/10"} text-white rounded-xl px-4 py-3.5 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 placeholder:text-white/20 transition-colors duration-150 input-focus-glow font-dm ${className}`}
+          className={`w-full bg-white/5 border ${error ? "border-error" : "border-white/10"} text-white rounded-xl px-4 py-3.5 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 placeholder:text-white/20 transition-colors duration-150 input-focus-glow font-dm disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-white/[0.02] read-only:opacity-70 read-only:cursor-not-allowed ${className}`}
           {...props}
         />
       </div>

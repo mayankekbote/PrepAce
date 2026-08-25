@@ -5,9 +5,13 @@ import com.prepace.auth.entity.*;
 
 import java.util.List;
 
+import com.prepace.auth.dto.ai.WeakQuestionDto;
+
 public interface AiEngineClient {
 
     InterviewQuestion generateInitialQuestion(InterviewSession session);
+
+    InterviewQuestion generateInitialQuestion(InterviewSession session, List<WeakQuestionDto> weakQuestions);
 
     InterviewQuestion generateNextQuestion(InterviewSession session, List<InterviewQuestion> previousQuestions, CandidateAnswer lastAnswer);
 

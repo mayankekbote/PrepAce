@@ -51,6 +51,11 @@ public class FastApiAiEngineClient implements AiEngineClient {
 
     @Override
     public InterviewQuestion generateInitialQuestion(InterviewSession session) {
+        return generateInitialQuestion(session, null);
+    }
+
+    @Override
+    public InterviewQuestion generateInitialQuestion(InterviewSession session, List<WeakQuestionDto> weakQuestions) {
         try {
             CandidateProfile profile = aiAnalysisService.getOrBuildProfile(session.getUser());
             CandidateProfileDto profileDto = buildProfileDto(profile);
@@ -59,7 +64,8 @@ public class FastApiAiEngineClient implements AiEngineClient {
                     profileDto,
                     session.getInterviewType().name(),
                     session.getDifficulty().name(),
-                    session.getTotalQuestions()
+                    session.getTotalQuestions(),
+                    weakQuestions
             );
 
             GeneratedQuestionPoolResponseDto response = restClient.post()
@@ -77,7 +83,8 @@ public class FastApiAiEngineClient implements AiEngineClient {
 
                 GeneratedQuestionDto firstQ = response.getQuestions().get(0);
                 Difficulty diff = parseDifficulty(firstQ.getDifficulty(), session.getDifficulty());
-                QuestionKind kind = parseQuestionKind(firstQ.getQuestionKind(), QuestionKind.INITIAL);
+                QuestionKind defaultKind = (weakQuestions != null && !weakQuestions.isEmpty()) ? QuestionKind.RETRY : QuestionKind.INITIAL;
+                QuestionKind kind = parseQuestionKind(firstQ.getQuestionKind(), defaultKind);
 
                 return new InterviewQuestion(
                         session,
@@ -94,7 +101,7 @@ public class FastApiAiEngineClient implements AiEngineClient {
         }
 
         session.setQuestionSource(QuestionSource.PLACEHOLDER_FALLBACK);
-        return fallbackClient.generateInitialQuestion(session);
+        return fallbackClient.generateInitialQuestion(session, weakQuestions);
     }
 
     @Override

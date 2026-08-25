@@ -64,11 +64,43 @@ public class InterviewSessionService {
                 request.getDurationMinutes()
         );
 
-        InterviewQuestion initialQuestion = aiEngineClient.generateInitialQuestion(session);
+        List<com.prepace.auth.dto.ai.WeakQuestionDto> weakQuestions = getActiveWeakQuestionsForUser(user, session.getInterviewType());
+        InterviewQuestion initialQuestion = aiEngineClient.generateInitialQuestion(session, weakQuestions);
         session.addQuestion(initialQuestion);
 
         InterviewSession savedSession = sessionRepository.save(session);
         return InterviewStateResponse.fromEntity(savedSession);
+    }
+
+    private List<com.prepace.auth.dto.ai.WeakQuestionDto> getActiveWeakQuestionsForUser(User user, com.prepace.auth.entity.enums.InterviewType interviewType) {
+        try {
+            List<InterviewQuestion> weakQuestions = questionRepository.findWeakQuestionsByUserAndType(user, interviewType, 3.5);
+            if (weakQuestions == null || weakQuestions.isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            List<InterviewQuestion> masteredQuestions = questionRepository.findMasteredQuestionsByUserAndType(user, interviewType, 3.5);
+            Set<String> masteredKeys = (masteredQuestions != null) ? masteredQuestions.stream()
+                    .map(q -> (q.getTopic() + ":" + q.getQuestionText()).toLowerCase().trim())
+                    .collect(Collectors.toSet()) : Collections.emptySet();
+
+            List<com.prepace.auth.dto.ai.WeakQuestionDto> result = new ArrayList<>();
+            Set<String> added = new HashSet<>();
+
+            for (InterviewQuestion q : weakQuestions) {
+                String key = (q.getTopic() + ":" + q.getQuestionText()).toLowerCase().trim();
+                if (!masteredKeys.contains(key) && !added.contains(key)) {
+                    added.add(key);
+                    Double prevScore = (q.getAnswer() != null && q.getAnswer().getEvaluation() != null)
+                            ? q.getAnswer().getEvaluation().getScore() : 0.0;
+                    result.add(new com.prepace.auth.dto.ai.WeakQuestionDto(q.getTopic(), q.getQuestionText(), prevScore));
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            LOGGER.warn("Failed to fetch active weak questions for user {}: {}", user.getEmail(), e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     @Transactional
@@ -139,16 +171,8 @@ public class InterviewSessionService {
             currentQuestion.setAnswer(answer);
 
             if (currentIndex < session.getTotalQuestions()) {
-                String nextTopic = selectNextUnusedTopic(session);
-                InterviewQuestion nextQ = new InterviewQuestion(
-                        session,
-                        currentIndex + 1,
-                        nextTopic,
-                        "No problem, let's switch to another topic: " + nextTopic + ". Can you walk me through your understanding of core concepts in " + nextTopic + "?",
-                        "OPEN_ENDED",
-                        session.getDifficulty(),
-                        QuestionKind.TOPIC_SWITCH
-                );
+                InterviewQuestion nextQ = aiEngineClient.generateNextQuestion(session, session.getQuestions(), answer);
+                nextQ.setQuestionKind(QuestionKind.TOPIC_SWITCH);
                 session.addQuestion(nextQ);
                 session.setCurrentQuestionIndex(currentIndex + 1);
             } else {

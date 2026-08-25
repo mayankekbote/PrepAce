@@ -29,9 +29,43 @@ public class PlaceholderAiEngineClient implements AiEngineClient {
 
     @Override
     public InterviewQuestion generateInitialQuestion(InterviewSession session) {
+        return generateInitialQuestion(session, null);
+    }
+
+    @Override
+    public InterviewQuestion generateInitialQuestion(InterviewSession session, List<com.prepace.auth.dto.ai.WeakQuestionDto> weakQuestions) {
+        if (weakQuestions != null && !weakQuestions.isEmpty()) {
+            com.prepace.auth.dto.ai.WeakQuestionDto weak = weakQuestions.get(0);
+            String topic = weak.getTopic() != null ? weak.getTopic() : getTopicForSequence(session.getInterviewType(), 1);
+            String questionText = weak.getQuestionText();
+            if (questionText == null || questionText.isBlank()) {
+                questionText = String.format("In your last test, you skipped or had difficulty with '%s'. Can you explain how you would solve core challenges in this area?", topic);
+            }
+
+            return new InterviewQuestion(
+                    session,
+                    1,
+                    topic,
+                    questionText,
+                    "OPEN_ENDED",
+                    session.getDifficulty(),
+                    QuestionKind.RETRY
+            );
+        }
+
         String topic = getTopicForSequence(session.getInterviewType(), 1);
-        String questionText = String.format("Welcome to your %s interview for the %s role (%s level). To begin, please walk me through a major system or project you designed recently, highlighting key technical challenges.",
-                session.getInterviewType(), session.getTargetRole(), session.getDifficulty());
+        String questionText;
+
+        if (session.getInterviewType() == InterviewType.HR) {
+            questionText = String.format("Welcome to your HR round! To start off, please introduce yourself and tell me about your background, your key strengths, and what motivated you to apply for the %s position.",
+                    session.getTargetRole());
+        } else if (session.getInterviewType() == InterviewType.MANAGERIAL) {
+            questionText = String.format("Welcome to your Managerial Round! Can you walk me through a major project where you took complete end-to-end ownership, highlighting your key responsibilities and outcomes?",
+                    session.getTargetRole());
+        } else {
+            questionText = String.format("Welcome to your Technical interview for the %s role (%s level). To begin, please walk me through a major system or project you designed recently, highlighting key technical challenges.",
+                    session.getTargetRole(), session.getDifficulty());
+        }
 
         return new InterviewQuestion(
                 session,
@@ -50,14 +84,56 @@ public class PlaceholderAiEngineClient implements AiEngineClient {
         String topic = getTopicForSequence(session.getInterviewType(), nextSeq);
 
         QuestionKind kind = (nextSeq % 2 == 0) ? QuestionKind.FOLLOW_UP : QuestionKind.TOPIC_SWITCH;
-
         String questionText;
-        if (kind == QuestionKind.FOLLOW_UP && lastAnswer != null && lastAnswer.getAnswerText() != null) {
-            questionText = String.format("Regarding your previous response on '%s': How would you scale this implementation to handle 10x higher traffic volume while maintaining strict low latency SLAs?",
-                    previousQuestions.get(previousQuestions.size() - 1).getTopic());
+
+        if (session.getInterviewType() == InterviewType.HR) {
+            switch (nextSeq) {
+                case 2:
+                    questionText = "What do you consider your greatest professional or personal strength, and what is one area or weakness you are actively working to improve?";
+                    break;
+                case 3:
+                    questionText = "Can you describe a situation where you had a disagreement or conflict with a teammate or project partner? How did you handle it and what was the resolution?";
+                    break;
+                case 4:
+                    questionText = "Tell me about a time when you were under intense pressure or facing tight deadlines. How did you organize your work to ensure quality while managing stress?";
+                    break;
+                case 5:
+                default:
+                    questionText = String.format("Where do you see yourself professionally in the next 2 to 3 years, and how does this role for %s fit into your long-term career aspirations?", session.getTargetRole());
+                    break;
+            }
+        } else if (session.getInterviewType() == InterviewType.MANAGERIAL) {
+            switch (nextSeq) {
+                case 2:
+                    questionText = "Can you describe a scenario where you faced ambiguous requirements or unexpected scope changes midway through a project? How did you prioritize tasks and communicate with stakeholders?";
+                    break;
+                case 3:
+                    questionText = "Tell me about a situation where a project or task did not go according to plan or resulted in a mistake. How did you take accountability and what steps did you take to fix it?";
+                    break;
+                case 4:
+                    questionText = "How do you handle situations where you have to balance speed of delivery against code quality and technical debt under tight deadlines?";
+                    break;
+                case 5:
+                default:
+                    questionText = "Describe a time when you had to convince a team member or stakeholder to adopt your approach when they initially disagreed with you.";
+                    break;
+            }
         } else {
-            questionText = String.format("Let's transition to '%s'. Can you explain how you evaluate trade-offs when choosing between different architectural patterns or frameworks for %s?",
-                    topic, session.getTargetRole());
+            switch (nextSeq) {
+                case 2:
+                    questionText = "How do you design REST APIs or microservices to ensure scalability, fault tolerance, and low latency under high concurrent load?";
+                    break;
+                case 3:
+                    questionText = "What strategies and tools do you use to diagnose, profile, and resolve performance bottlenecks or database query slowness in production?";
+                    break;
+                case 4:
+                    questionText = "Can you explain how you handle concurrency, race conditions, and transactional consistency in a distributed backend environment?";
+                    break;
+                case 5:
+                default:
+                    questionText = "When choosing tech stack components or third-party libraries, what trade-offs do you evaluate before introducing a new dependency to a production project?";
+                    break;
+            }
         }
 
         return new InterviewQuestion(
@@ -67,7 +143,7 @@ public class PlaceholderAiEngineClient implements AiEngineClient {
                 questionText,
                 "OPEN_ENDED",
                 session.getDifficulty(),
-                QuestionKind.INITIAL
+                kind
         );
     }
 
@@ -158,8 +234,10 @@ public class PlaceholderAiEngineClient implements AiEngineClient {
         double relevanceScore = evaluatedCount > 0 ? clamp(round1(sumRelevance / evaluatedCount)) : 0.0;
         double clarityScore = evaluatedCount > 0 ? clamp(round1(sumClarity / evaluatedCount)) : 0.0;
 
+        // Updated Rubric: Technical Depth removed from scoring calculation.
+        // Weights: 50% Technical Correctness (+15%), 30% Relevance (+10%), 20% Clarity (unchanged)
         double overallScore = evaluatedCount > 0 ?
-                clamp(round1((correctnessScore * 0.35) + (depthScore * 0.25) + (relevanceScore * 0.20) + (clarityScore * 0.20))) : 0.0;
+                clamp(round1((correctnessScore * 0.50) + (relevanceScore * 0.30) + (clarityScore * 0.20))) : 0.0;
 
         PerformanceLabel label = PerformanceLabel.fromScore(overallScore);
 

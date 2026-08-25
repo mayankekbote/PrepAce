@@ -6,5 +6,6 @@ public enum QuestionKind {
     CLARIFY,
     SIMPLIFY,
     FALLBACK,
-    TOPIC_SWITCH
+    TOPIC_SWITCH,
+    RETRY
 }

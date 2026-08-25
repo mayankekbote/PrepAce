@@ -322,6 +322,7 @@ export const InterviewRoomPage = () => {
       {/* Main Question Display */}
       <InterviewQuestionCard
         question={currentQuestion}
+        interviewType={sessionMeta?.interviewType}
         isSpeaking={isSpeaking}
         onReplay={() => replay()}
         onStopAudio={cancelTts}

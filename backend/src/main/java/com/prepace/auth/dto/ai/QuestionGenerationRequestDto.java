@@ -6,6 +6,8 @@ public class QuestionGenerationRequestDto {
     private String difficulty;
     private Integer totalQuestions;
 
+    private java.util.List<WeakQuestionDto> weakQuestionsToRetry;
+
     public QuestionGenerationRequestDto() {}
 
     public QuestionGenerationRequestDto(CandidateProfileDto candidateProfile, String interviewType, String difficulty, Integer totalQuestions) {
@@ -13,6 +15,14 @@ public class QuestionGenerationRequestDto {
         this.interviewType = interviewType;
         this.difficulty = difficulty;
         this.totalQuestions = totalQuestions;
+    }
+
+    public QuestionGenerationRequestDto(CandidateProfileDto candidateProfile, String interviewType, String difficulty, Integer totalQuestions, java.util.List<WeakQuestionDto> weakQuestionsToRetry) {
+        this.candidateProfile = candidateProfile;
+        this.interviewType = interviewType;
+        this.difficulty = difficulty;
+        this.totalQuestions = totalQuestions;
+        this.weakQuestionsToRetry = weakQuestionsToRetry;
     }
 
     public CandidateProfileDto getCandidateProfile() { return candidateProfile; }
@@ -23,4 +33,6 @@ public class QuestionGenerationRequestDto {
     public void setDifficulty(String difficulty) { this.difficulty = difficulty; }
     public Integer getTotalQuestions() { return totalQuestions; }
     public void setTotalQuestions(Integer totalQuestions) { this.totalQuestions = totalQuestions; }
+    public java.util.List<WeakQuestionDto> getWeakQuestionsToRetry() { return weakQuestionsToRetry; }
+    public void setWeakQuestionsToRetry(java.util.List<WeakQuestionDto> weakQuestionsToRetry) { this.weakQuestionsToRetry = weakQuestionsToRetry; }
 }

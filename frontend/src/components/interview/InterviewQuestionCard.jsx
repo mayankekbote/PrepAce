@@ -3,21 +3,47 @@ import { Volume2, VolumeX, RotateCcw, Bot, MessageSquare } from "lucide-react";
 
 export const InterviewQuestionCard = ({
   question,
+  interviewType,
   isSpeaking,
   onReplay,
   onStopAudio,
 }) => {
   if (!question) return null;
 
+  const roundType = (interviewType || "TECHNICAL").toUpperCase();
+
   return (
     <div className="glass-card rounded-2xl p-6 md:p-8 w-full border border-white/10 relative overflow-hidden mb-6">
-      {/* Top Bar: Topic & Speaking Status */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-accent/10 border border-accent/20 text-accent">
-            Topic: {question.topic || "Core Technical Concepts"}
+      {/* Top Bar: Topic, Round Type & Speaking Status */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Round Badge */}
+          {roundType === "HR" && (
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-purple-500/20 border border-purple-500/40 text-purple-300">
+              HR Round
+            </span>
+          )}
+          {roundType === "MANAGERIAL" && (
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-indigo-500/20 border border-indigo-500/40 text-indigo-300">
+              Managerial Round (MR)
+            </span>
+          )}
+          {roundType === "TECHNICAL" && (
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-accent/10 border border-accent/20 text-accent">
+              Technical Round
+            </span>
+          )}
+
+          <span className="px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-white/80">
+            Topic: {question.topic || "Core Concepts"}
           </span>
-          {question.questionKind && (
+
+          {question.questionKind === "RETRY" ? (
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-amber-500/20 border border-amber-500/40 text-amber-400 animate-pulse">
+              <RotateCcw size={12} />
+              Re-Asked Question (Focus Area from Past Test)
+            </span>
+          ) : question.questionKind && (
             <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-white/5 border border-white/10 text-text-secondary">
               {question.questionKind}
             </span>
@@ -47,6 +73,16 @@ export const InterviewQuestionCard = ({
           )}
         </div>
       </div>
+
+      {/* Retry Question Notification Banner */}
+      {question.questionKind === "RETRY" && (
+        <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono">
+          <RotateCcw size={16} className="shrink-0 text-amber-400" />
+          <span>
+            <strong>Project Guide Feature:</strong> This question is being re-tested because it was unanswered or scored low (&lt; 3.5) in a previous test. Answer well to master it!
+          </span>
+        </div>
+      )}
 
       {/* Speaking Indicator */}
       {isSpeaking && (

@@ -108,9 +108,9 @@ const InterviewPrepPage = () => {
               <Input
                 label="Target Job Role"
                 value={targetRole}
-                onChange={(e) => setTargetRole(e.target.value)}
+                disabled
+                readOnly
                 placeholder="e.g. Senior Backend Engineer"
-                required
               />
 
               {/* Interview Type Selection */}
