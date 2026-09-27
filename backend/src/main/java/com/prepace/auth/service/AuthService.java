@@ -65,7 +65,7 @@ public class AuthService {
             user = userRepository.save(user);
         }
 
-        emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
+        // emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
 
         UserDetails userDetails = org.springframework.security.core.userdetails.User
                 .withUsername(user.getEmail())
