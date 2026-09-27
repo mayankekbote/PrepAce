@@ -14,7 +14,7 @@ httpx==0.28.1
 idna==3.13
 numpy==2.2.6
 opencv-python==4.10.0.84
-opencv-python-headless==5.0.0.93
+
 pydantic==2.13.3
 pydantic_core==2.46.3
 PyPDF2==3.0.1
