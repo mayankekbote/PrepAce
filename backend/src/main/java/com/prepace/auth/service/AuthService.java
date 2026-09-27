@@ -1,8 +1,8 @@
 package com.prepace.auth.service;
 
-import com.prepace.auth.dto.*;
-import com.prepace.auth.entity.User;
-import com.prepace.auth.repository.UserRepository;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -12,9 +12,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
-import java.util.UUID;
+import com.prepace.auth.dto.AuthResponse;
+import com.prepace.auth.dto.CompleteProfileRequest;
+import com.prepace.auth.dto.LoginRequest;
+import com.prepace.auth.dto.RegisterRequest;
+import com.prepace.auth.entity.User;
+import com.prepace.auth.repository.UserRepository;
 
 @Service
 public class AuthService {
@@ -65,7 +68,7 @@ public class AuthService {
             user = userRepository.save(user);
         }
 
-        emailService.sendWelcomeEmail(user.getEmail(), user.getFullName());
+    
 
         UserDetails userDetails = org.springframework.security.core.userdetails.User
                 .withUsername(user.getEmail())
