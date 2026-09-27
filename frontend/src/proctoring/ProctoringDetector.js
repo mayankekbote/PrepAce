@@ -146,7 +146,9 @@ export class ProctoringDetector {
               const height = yMax - yMin;
               const score = this.parseNumericScore(f.probability);
 
-              console.log(`[FACE DETECTION #${idx + 1}] Confidence: ${score.toFixed(3)} | Box: [x:${xMin.toFixed(0)}, y:${yMin.toFixed(0)}, w:${width.toFixed(0)}, h:${height.toFixed(0)}]`);
+              if (PROCTORING_CONFIG.DEBUG_MODE) {
+                console.log(`[FACE DETECTION #${idx + 1}] Confidence: ${score.toFixed(3)} | Box: [x:${xMin.toFixed(0)}, y:${yMin.toFixed(0)}, w:${width.toFixed(0)}, h:${height.toFixed(0)}]`);
+              }
               return { score, box: { xMin, yMin, width, height } };
             });
           }
@@ -182,9 +184,11 @@ export class ProctoringDetector {
       const topConfidence = personResult.faceBoxes.length > 0 ? personResult.faceBoxes[0].score : 0.0;
 
       // Verbose Log showing NMS Suppression Result
-      console.log(
-        `[Detection Frame #${currentFrameIndex}] Raw Proposals: ${personResult.rawDetectionsCount} | NMS Unique Faces: ${personResult.uniqueFaceCount} | Top Confidence: ${(topConfidence * 100).toFixed(1)}% | Engine: ${personResult.engine}`
-      );
+      if (PROCTORING_CONFIG.DEBUG_MODE) {
+        console.log(
+          `[Detection Frame #${currentFrameIndex}] Raw Proposals: ${personResult.rawDetectionsCount} | NMS Unique Faces: ${personResult.uniqueFaceCount} | Top Confidence: ${(topConfidence * 100).toFixed(1)}% | Engine: ${personResult.engine}`
+        );
+      }
 
       return {
         frameIndex: currentFrameIndex,
