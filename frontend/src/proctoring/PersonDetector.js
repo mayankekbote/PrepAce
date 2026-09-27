@@ -135,7 +135,9 @@ export class PersonDetector {
           const dist = Math.abs(cx1 - cx2);
           if (dist < minSpatialDist) {
             isSpatiallySeparate = false;
-            console.log(`[Spatial Filter] Merged face proposal too close (dx: ${dist.toFixed(1)}px < ${minSpatialDist.toFixed(1)}px)`);
+            if (PROCTORING_CONFIG.DEBUG_MODE) {
+              console.log(`[Spatial Filter] Merged face proposal too close (dx: ${dist.toFixed(1)}px < ${minSpatialDist.toFixed(1)}px)`);
+            }
             break;
           }
         }

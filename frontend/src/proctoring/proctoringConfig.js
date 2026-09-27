@@ -33,7 +33,7 @@ export const PROCTORING_CONFIG = {
   PROCTORING_GRACE_PERIOD: 2.5,           // General grace period threshold
 
   // Performance & Sampling
-  FRAME_SAMPLING_INTERVAL_MS: 150,         // Frame sampling frequency (150ms ~ 6.6 FPS)
+  FRAME_SAMPLING_INTERVAL_MS: 1000,        // Frame sampling frequency (1000ms ~ 1 FPS)
   CANVAS_MAX_WIDTH: 640,                   // Scaled width for AI inference
   CANVAS_MAX_HEIGHT: 480,                  // Scaled height for AI inference
 
@@ -44,11 +44,11 @@ export const PROCTORING_CONFIG = {
 
   // AI Vision Engines & Models
   DETECTION_ENGINE: 'HYBRID',
-  OPENCV_SERVICE_URL: 'http://localhost:8000/proctor/detect-frame',
+  OPENCV_SERVICE_URL: import.meta.env.VITE_OPENCV_SERVICE_URL,
   MODEL_BASE: 'lite_mobilenet_v2',
 
   // Developer Debug & Telemetry Mode
-  DEBUG_MODE: true
+  DEBUG_MODE: false
 };
 
 export default PROCTORING_CONFIG;
