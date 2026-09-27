@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8085/api",
+  baseURL: "https://prepace-nonr.onrender.com/api",
 });
 
 // Interceptor to attach JWT
@@ -24,10 +24,15 @@ api.interceptors.response.use(
       console.warn("Session expired or unauthorized. Clearing stored token.");
       localStorage.removeItem("prepace_token");
       localStorage.removeItem("prepace_user");
-      if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
+
+      if (
+        typeof window !== "undefined" &&
+        !window.location.pathname.includes("/login")
+      ) {
         window.location.href = "/login";
       }
     }
+
     return Promise.reject(error);
   }
 );
