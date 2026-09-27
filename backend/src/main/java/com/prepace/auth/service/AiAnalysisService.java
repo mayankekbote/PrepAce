@@ -52,7 +52,7 @@ public class AiAnalysisService {
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
             ResponseEntity<Map> response = restTemplate.postForEntity(
-                    PYTHON_SERVICE_URL,
+                    PYTHON_SERVICE_URL + "/analyze",
                     requestEntity,
                     Map.class
             );
