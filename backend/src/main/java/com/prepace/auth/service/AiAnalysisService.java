@@ -22,7 +22,9 @@ public class AiAnalysisService {
     private final CandidateProfileRepository profileRepository;
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final String PYTHON_SERVICE_URL = "http://127.0.0.1:8000/analyze";
+  private final String PYTHON_SERVICE_URL = System.getenv(
+        "AI_SERVICE_URL"
+);
 
     public AiAnalysisService(FileService fileService, CandidateProfileRepository profileRepository) {
         this.fileService = fileService;
