@@ -4,5 +4,6 @@ public enum SessionStatus {
     CREATED,
     IN_PROGRESS,
     COMPLETED,
-    ABANDONED
+    ABANDONED,
+    TERMINATED
 }

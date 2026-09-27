@@ -10,12 +10,13 @@ public class AuthResponse {
     private String targetRole;
     private String experienceLevel;
     private String resumeUrl;
+    private String role;
     private boolean profileComplete;
 
     public AuthResponse() {}
 
     public AuthResponse(String token, String email, String fullName, String phoneNumber, String linkedinUrl, 
-                        String githubUrl, String targetRole, String experienceLevel, String resumeUrl, boolean profileComplete) {
+                        String githubUrl, String targetRole, String experienceLevel, String resumeUrl, String role, boolean profileComplete) {
         this.token = token;
         this.email = email;
         this.fullName = fullName;
@@ -25,6 +26,7 @@ public class AuthResponse {
         this.targetRole = targetRole;
         this.experienceLevel = experienceLevel;
         this.resumeUrl = resumeUrl;
+        this.role = role;
         this.profileComplete = profileComplete;
     }
 
@@ -42,6 +44,7 @@ public class AuthResponse {
         private String targetRole;
         private String experienceLevel;
         private String resumeUrl;
+        private String role;
         private boolean profileComplete;
 
         public AuthResponseBuilder token(String token) { this.token = token; return this; }
@@ -53,10 +56,11 @@ public class AuthResponse {
         public AuthResponseBuilder targetRole(String targetRole) { this.targetRole = targetRole; return this; }
         public AuthResponseBuilder experienceLevel(String experienceLevel) { this.experienceLevel = experienceLevel; return this; }
         public AuthResponseBuilder resumeUrl(String resumeUrl) { this.resumeUrl = resumeUrl; return this; }
+        public AuthResponseBuilder role(String role) { this.role = role; return this; }
         public AuthResponseBuilder profileComplete(boolean profileComplete) { this.profileComplete = profileComplete; return this; }
 
         public AuthResponse build() {
-            return new AuthResponse(token, email, fullName, phoneNumber, linkedinUrl, githubUrl, targetRole, experienceLevel, resumeUrl, profileComplete);
+            return new AuthResponse(token, email, fullName, phoneNumber, linkedinUrl, githubUrl, targetRole, experienceLevel, resumeUrl, role, profileComplete);
         }
     }
 
@@ -79,6 +83,8 @@ public class AuthResponse {
     public void setExperienceLevel(String experienceLevel) { this.experienceLevel = experienceLevel; }
     public String getResumeUrl() { return resumeUrl; }
     public void setResumeUrl(String resumeUrl) { this.resumeUrl = resumeUrl; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
     public boolean isProfileComplete() { return profileComplete; }
     public void setProfileComplete(boolean profileComplete) { this.profileComplete = profileComplete; }
 }

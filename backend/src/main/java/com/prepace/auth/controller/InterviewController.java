@@ -140,4 +140,51 @@ public class InterviewController {
                         .build()
         );
     }
+
+    @PostMapping("/{sessionId}/proctoring/events")
+    public ResponseEntity<ApiResponse<InterviewStateResponse>> recordProctoringEvents(
+            @PathVariable UUID sessionId,
+            @RequestBody List<com.prepace.auth.dto.interview.ProctoringEventRequest> requests,
+            Principal principal
+    ) {
+        InterviewStateResponse response = sessionService.recordProctoringEvents(sessionId, requests, principal.getName());
+        return ResponseEntity.ok(
+                ApiResponse.<InterviewStateResponse>builder()
+                        .success(true)
+                        .message("Proctoring events recorded")
+                        .data(response)
+                        .build()
+        );
+    }
+
+    @PostMapping("/{sessionId}/terminate")
+    public ResponseEntity<ApiResponse<InterviewStateResponse>> terminateSession(
+            @PathVariable UUID sessionId,
+            @Valid @RequestBody com.prepace.auth.dto.interview.TerminateInterviewRequest request,
+            Principal principal
+    ) {
+        InterviewStateResponse response = sessionService.terminateSession(sessionId, request, principal.getName());
+        return ResponseEntity.ok(
+                ApiResponse.<InterviewStateResponse>builder()
+                        .success(true)
+                        .message("Interview session terminated due to proctoring rules")
+                        .data(response)
+                        .build()
+        );
+    }
+
+    @GetMapping("/{sessionId}/proctoring/events")
+    public ResponseEntity<ApiResponse<List<com.prepace.auth.entity.ProctoringEvent>>> getProctoringEvents(
+            @PathVariable UUID sessionId,
+            Principal principal
+    ) {
+        List<com.prepace.auth.entity.ProctoringEvent> events = sessionService.getProctoringEvents(sessionId, principal.getName());
+        return ResponseEntity.ok(
+                ApiResponse.<List<com.prepace.auth.entity.ProctoringEvent>>builder()
+                        .success(true)
+                        .message("Proctoring events retrieved")
+                        .data(events)
+                        .build()
+        );
+    }
 }

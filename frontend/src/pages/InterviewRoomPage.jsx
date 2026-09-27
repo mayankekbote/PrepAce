@@ -11,7 +11,14 @@ import InterviewQuestionCard from "../components/interview/InterviewQuestionCard
 import VoiceAnswerPanel from "../components/interview/VoiceAnswerPanel";
 import TranscriptEditor from "../components/interview/TranscriptEditor";
 
-import { Loader2, AlertTriangle, CheckCircle2, Home, RotateCcw } from "lucide-react";
+import ProctoringPermissionModal from "../components/proctoring/ProctoringPermissionModal";
+import ProctoringWebcamPreview from "../components/proctoring/ProctoringWebcamPreview";
+import ProctoringWarningBanner from "../components/proctoring/ProctoringWarningBanner";
+import ProctoringTerminationScreen from "../components/proctoring/ProctoringTerminationScreen";
+
+import ProctoringManager from "../proctoring/ProctoringManager";
+
+import { Loader2, AlertTriangle, CheckCircle2, Home } from "lucide-react";
 
 export const InterviewRoomPage = () => {
   const { sessionId } = useParams();
@@ -27,6 +34,18 @@ export const InterviewRoomPage = () => {
 
   // End Session Confirmation Modal state
   const [showEndModal, setShowEndModal] = useState(false);
+
+  // Proctoring States
+  const [mediaStream, setMediaStream] = useState(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(true);
+  const [proctoringStatus, setProctoringStatus] = useState({ level: "OK", message: "Proctoring Active", countdown: null });
+  const [isTerminated, setIsTerminated] = useState(false);
+  const [terminationReason, setTerminationReason] = useState(null);
+  const [proctoringEvents, setProctoringEvents] = useState([]);
+
+  // Proctoring Manager Reference
+  const proctoringManagerRef = useRef(new ProctoringManager());
+  const hiddenVideoRef = useRef(null);
 
   // Speech Recognition Hook
   const {
@@ -56,6 +75,14 @@ export const InterviewRoomPage = () => {
       const res = await interviewApi.getInterviewState(sessionId);
       if (res.success && res.data) {
         setSession(res.data);
+
+        // Check if session was already terminated on backend
+        const sessionMeta = res.data.session || res.data;
+        if (sessionMeta?.status === "TERMINATED") {
+          setIsTerminated(true);
+          setTerminationReason(sessionMeta.terminationReason || "PROCTORING_VIOLATION");
+          setShowPermissionModal(false);
+        }
       } else {
         setError(res.message || "Failed to load interview state.");
       }
@@ -79,21 +106,95 @@ export const InterviewRoomPage = () => {
   // Handle TTS playback when current question changes
   useEffect(() => {
     const sessionMeta = session?.session || session;
-    if (session && session.currentQuestion && sessionMeta?.status === "IN_PROGRESS") {
+    if (session && session.currentQuestion && sessionMeta?.status === "IN_PROGRESS" && !isTerminated && !showPermissionModal) {
       const qId = session.currentQuestion.id || `${session.currentQuestion.sequence}_${session.currentQuestion.questionText}`;
-      
+
       if (activeQuestionIdRef.current !== qId) {
         activeQuestionIdRef.current = qId;
         resetTranscript();
-        
+
         // Speak new question text aloud
         speak(session.currentQuestion.questionText);
       }
     }
-  }, [session, speak, resetTranscript]);
+  }, [session, speak, resetTranscript, isTerminated, showPermissionModal]);
+
+  // Clean up proctoring monitoring on unmount
+  useEffect(() => {
+    return () => {
+      proctoringManagerRef.current.stopMonitoring();
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [mediaStream]);
+
+  // Handle Permissions Granted & Start Monitoring
+  const handlePermissionsGranted = async (stream) => {
+    setMediaStream(stream);
+    setShowPermissionModal(false);
+
+    // Call /start endpoint if session is in CREATED status
+    const sessionMeta = session?.session || session;
+    if (sessionMeta && sessionMeta.status === "CREATED") {
+      try {
+        const startRes = await interviewApi.startSession(sessionId);
+        if (startRes.success && startRes.data) {
+          setSession(startRes.data);
+        }
+      } catch (err) {
+        console.error("Failed to start session:", err);
+      }
+    }
+
+    // Attach stream to hidden video ref for background AI model processing
+    if (hiddenVideoRef.current) {
+      hiddenVideoRef.current.srcObject = stream;
+      hiddenVideoRef.current.play().catch((e) => console.warn("Video play warning:", e));
+    }
+
+    // Start Proctoring Manager monitoring loop
+    proctoringManagerRef.current.startMonitoring({
+      videoElement: hiddenVideoRef.current,
+      stream,
+      onViolation: handleProctoringViolation,
+      onTerminate: handleProctoringTermination,
+      onStatusUpdate: (status) => setProctoringStatus(status),
+    });
+  };
+
+  // Callback when a individual proctoring violation is recorded
+  const handleProctoringViolation = async (event, count) => {
+    setProctoringEvents((prev) => [...prev, event]);
+    try {
+      await interviewApi.recordProctoringEvents(sessionId, [event]);
+    } catch (e) {
+      console.warn("Failed to sync proctoring event to backend:", e);
+    }
+  };
+
+  // Callback when a critical violation triggers interview termination
+  const handleProctoringTermination = async (reason, eventsLog) => {
+    cancelTts();
+    if (isListening) stopListening();
+
+    setIsTerminated(true);
+    setTerminationReason(reason);
+    setProctoringEvents(eventsLog);
+
+    try {
+      const res = await interviewApi.terminateSession(sessionId, reason, eventsLog);
+      if (res.success && res.data) {
+        setSession(res.data);
+      }
+    } catch (e) {
+      console.error("Failed to sync interview termination to backend:", e);
+    }
+  };
 
   // Handle Start Listening
   const handleStartListening = () => {
+    if (isTerminated) return;
     if (isSpeaking) {
       cancelTts();
     }
@@ -102,6 +203,7 @@ export const InterviewRoomPage = () => {
 
   // Toggle Input Mode (SPEECH <-> TEXT)
   const handleToggleInputMode = () => {
+    if (isTerminated) return;
     if (isListening) {
       stopListening();
     }
@@ -110,7 +212,7 @@ export const InterviewRoomPage = () => {
 
   // Submit Candidate Answer
   const handleSubmitAnswer = async () => {
-    if (submitting || !transcript || transcript.trim().length === 0) return;
+    if (isTerminated || submitting || !transcript || transcript.trim().length === 0) return;
 
     if (isListening) {
       stopListening();
@@ -147,7 +249,7 @@ export const InterviewRoomPage = () => {
 
   // Skip / "I Don't Know" Handling
   const handleSkipQuestion = async () => {
-    if (submitting) return;
+    if (isTerminated || submitting) return;
 
     if (isListening) {
       stopListening();
@@ -214,6 +316,17 @@ export const InterviewRoomPage = () => {
   };
 
   const sessionMeta = session?.session || session;
+
+  // Render Terminated State immediately if terminated locally or backend status is TERMINATED
+  if (isTerminated || sessionMeta?.status === "TERMINATED") {
+    return (
+      <ProctoringTerminationScreen
+        reason={terminationReason || sessionMeta?.terminationReason || "PROCTORING_VIOLATION"}
+        events={proctoringEvents}
+        session={sessionMeta}
+      />
+    );
+  }
 
   // Render Completing / Analyzing Loading State
   if (completing) {
@@ -307,7 +420,27 @@ export const InterviewRoomPage = () => {
   const currentQuestion = session?.currentQuestion;
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4">
+    <div className="max-w-5xl mx-auto py-6 px-4 relative">
+      {/* Offscreen active Video element for AI Computer Vision Frame Sampling */}
+      <video
+        ref={hiddenVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '320px', height: '240px', opacity: 0, pointerEvents: 'none' }}
+      />
+
+      {/* Proctoring Permission & Disclosure Setup Modal */}
+      {showPermissionModal && (
+        <ProctoringPermissionModal
+          onPermissionsGranted={handlePermissionsGranted}
+          onCancel={() => navigate("/dashboard")}
+        />
+      )}
+
+      {/* Top Warning Banner (When violation warning or critical countdown is active) */}
+      <ProctoringWarningBanner statusState={proctoringStatus} />
+
       {/* Top Header Progress Bar */}
       <InterviewProgress
         currentIndex={sessionMeta?.currentQuestionIndex || 1}
@@ -319,39 +452,56 @@ export const InterviewRoomPage = () => {
         onEndInterview={() => setShowEndModal(true)}
       />
 
-      {/* Main Question Display */}
-      <InterviewQuestionCard
-        question={currentQuestion}
-        interviewType={sessionMeta?.interviewType}
-        isSpeaking={isSpeaking}
-        onReplay={() => replay()}
-        onStopAudio={cancelTts}
-      />
+      {/* Layout Grid: Main Question & Voice Controls + Floating Webcam Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+        <div className="lg:col-span-3 space-y-6">
+          {/* Main Question Display */}
+          <InterviewQuestionCard
+            question={currentQuestion}
+            interviewType={sessionMeta?.interviewType}
+            isSpeaking={isSpeaking}
+            onReplay={() => replay()}
+            onStopAudio={cancelTts}
+          />
 
-      {/* Voice Control Panel */}
-      <VoiceAnswerPanel
-        isListening={isListening}
-        isSupported={sttSupported}
-        isSpeaking={isSpeaking}
-        submitting={submitting}
-        inputMode={inputMode}
-        error={sttError}
-        onStartListening={handleStartListening}
-        onStopListening={stopListening}
-        onToggleInputMode={handleToggleInputMode}
-        onSkipQuestion={handleSkipQuestion}
-      />
+          {/* Voice Control Panel */}
+          <VoiceAnswerPanel
+            isListening={isListening}
+            isSupported={sttSupported}
+            isSpeaking={isSpeaking}
+            submitting={submitting}
+            inputMode={inputMode}
+            error={sttError}
+            onStartListening={handleStartListening}
+            onStopListening={stopListening}
+            onToggleInputMode={handleToggleInputMode}
+            onSkipQuestion={handleSkipQuestion}
+          />
 
-      {/* Transcript Editor & Submission */}
-      <TranscriptEditor
-        transcript={transcript}
-        setTranscript={setTranscript}
-        inputMode={inputMode}
-        isListening={isListening}
-        isSpeaking={isSpeaking}
-        submitting={submitting}
-        onSubmit={handleSubmitAnswer}
-      />
+          {/* Transcript Editor & Submission */}
+          <TranscriptEditor
+            transcript={transcript}
+            setTranscript={setTranscript}
+            inputMode={inputMode}
+            isListening={isListening}
+            isSpeaking={isSpeaking}
+            submitting={submitting}
+            onSubmit={handleSubmitAnswer}
+          />
+        </div>
+
+        {/* Sidebar: Proctoring Webcam Preview Widget */}
+        <div className="lg:col-span-1 space-y-4">
+          <ProctoringWebcamPreview
+            stream={mediaStream}
+            statusState={proctoringStatus}
+            proctoringManager={proctoringManagerRef.current}
+          />
+          <video ref={hiddenVideoRef} autoPlay playsInline muted className="hidden" />
+        </div>
+      </div>
+
+
 
       {/* End Session Confirmation Modal */}
       {showEndModal && (

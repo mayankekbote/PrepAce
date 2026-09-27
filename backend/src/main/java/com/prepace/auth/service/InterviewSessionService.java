@@ -36,18 +36,21 @@ public class InterviewSessionService {
     private final InterviewQuestionRepository questionRepository;
     private final UserRepository userRepository;
     private final AiEngineClient aiEngineClient;
+    private final com.prepace.auth.repository.ProctoringEventRepository proctoringEventRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public InterviewSessionService(
             InterviewSessionRepository sessionRepository,
             InterviewQuestionRepository questionRepository,
             UserRepository userRepository,
-            AiEngineClient aiEngineClient
+            AiEngineClient aiEngineClient,
+            com.prepace.auth.repository.ProctoringEventRepository proctoringEventRepository
     ) {
         this.sessionRepository = sessionRepository;
         this.questionRepository = questionRepository;
         this.userRepository = userRepository;
         this.aiEngineClient = aiEngineClient;
+        this.proctoringEventRepository = proctoringEventRepository;
     }
 
     @Transactional
@@ -343,5 +346,106 @@ public class InterviewSessionService {
         }
 
         return "System Scalability & Reliability";
+    }
+
+    @Transactional
+    public InterviewStateResponse recordProctoringEvents(UUID sessionId, List<com.prepace.auth.dto.interview.ProctoringEventRequest> requests, String userEmail) {
+        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+
+        if (session.getStatus() == SessionStatus.TERMINATED || session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.ABANDONED) {
+            return InterviewStateResponse.fromEntity(session);
+        }
+
+        if (requests == null || requests.isEmpty()) {
+            return InterviewStateResponse.fromEntity(session);
+        }
+
+        List<Map<String, Object>> eventsLog = new ArrayList<>();
+        if (session.getProctoringEventsJson() != null && !session.getProctoringEventsJson().isBlank()) {
+            try {
+                eventsLog = objectMapper.readValue(session.getProctoringEventsJson(), new TypeReference<List<Map<String, Object>>>() {});
+            } catch (Exception e) {
+                LOGGER.warn("Failed to parse existing proctoring events JSON for session {}", sessionId);
+            }
+        }
+
+        int newViolationsCount = session.getProctoringViolationsCount() != null ? session.getProctoringViolationsCount() : 0;
+
+        for (com.prepace.auth.dto.interview.ProctoringEventRequest req : requests) {
+            ProctoringEvent entity = new ProctoringEvent(
+                    session,
+                    req.getType(),
+                    req.getSeverity(),
+                    parseTimestamp(req.getTimestamp()),
+                    req.getDuration(),
+                    req.getConfidence(),
+                    req.getMetadata()
+            );
+            proctoringEventRepository.save(entity);
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", entity.getId() != null ? entity.getId().toString() : UUID.randomUUID().toString());
+            map.put("type", req.getType());
+            map.put("severity", req.getSeverity() != null ? req.getSeverity() : "WARNING");
+            map.put("timestamp", req.getTimestamp() != null ? req.getTimestamp() : LocalDateTime.now().toString());
+            map.put("duration", req.getDuration());
+            map.put("confidence", req.getConfidence());
+            map.put("metadata", req.getMetadata());
+            eventsLog.add(map);
+
+            if (!"INFO".equalsIgnoreCase(req.getSeverity())) {
+                newViolationsCount++;
+            }
+        }
+
+        session.setProctoringViolationsCount(newViolationsCount);
+        try {
+            session.setProctoringEventsJson(objectMapper.writeValueAsString(eventsLog));
+        } catch (Exception e) {
+            LOGGER.warn("Failed to serialize proctoring events log for session {}", sessionId);
+        }
+
+        InterviewSession savedSession = sessionRepository.save(session);
+        return InterviewStateResponse.fromEntity(savedSession);
+    }
+
+    @Transactional
+    public InterviewStateResponse terminateSession(UUID sessionId, TerminateInterviewRequest request, String userEmail) {
+        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+
+        if (session.getStatus() == SessionStatus.TERMINATED) {
+            return InterviewStateResponse.fromEntity(session);
+        }
+
+        if (request != null && request.getEvents() != null && !request.getEvents().isEmpty()) {
+            recordProctoringEvents(sessionId, request.getEvents(), userEmail);
+            session = sessionRepository.findById(sessionId).orElse(session);
+        }
+
+        session.setStatus(SessionStatus.TERMINATED);
+        session.setTerminationReason(request != null && request.getReason() != null && !request.getReason().isBlank()
+                ? request.getReason() : "PROCTORING_VIOLATION");
+        if (session.getCompletedAt() == null) {
+            session.setCompletedAt(LocalDateTime.now());
+        }
+
+        InterviewSession savedSession = sessionRepository.save(session);
+        LOGGER.info("Interview session {} TERMINATED. Reason: {}", sessionId, savedSession.getTerminationReason());
+        return InterviewStateResponse.fromEntity(savedSession);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProctoringEvent> getProctoringEvents(UUID sessionId, String userEmail) {
+        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+        return proctoringEventRepository.findBySessionOrderByTimestampAsc(session);
+    }
+
+    private LocalDateTime parseTimestamp(String str) {
+        if (str == null || str.isBlank()) return LocalDateTime.now();
+        try {
+            return LocalDateTime.parse(str);
+        } catch (Exception e) {
+            return LocalDateTime.now();
+        }
     }
 }

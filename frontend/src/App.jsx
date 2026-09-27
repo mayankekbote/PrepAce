@@ -15,6 +15,14 @@ import ResumeAnalysisPage from "./pages/ResumeAnalysisPage";
 import InterviewPrepPage from "./pages/InterviewPrepPage";
 import InterviewRoomPage from "./pages/InterviewRoomPage";
 import InterviewResultsPage from "./pages/InterviewResultsPage";
+import ProctoringTestPage from "./pages/ProctoringTestPage";
+
+
+import { AdminRoute } from "./components/AdminRoute";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminInterviewsPage from "./pages/admin/AdminInterviewsPage";
+import AdminAnalyticsPage from "./pages/admin/AdminAnalyticsPage";
 
 const App = () => {
   return (
@@ -35,6 +43,15 @@ const App = () => {
             <Route path="/interview/:sessionId/result" element={<InterviewResultsPage />} />
             <Route path="/update-resume" element={<UpdateResumePage />} />
             <Route path="/update-details" element={<UpdateDetailsPage />} />
+            <Route path="/proctoring-test" element={<ProctoringTestPage />} />
+
+
+            {/* Protected Admin Routes */}
+            <Route path="/admin" element={<AdminRoute><AdminDashboardPage /></AdminRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><AdminUsersPage /></AdminRoute>} />
+            <Route path="/admin/interviews" element={<AdminRoute><AdminInterviewsPage /></AdminRoute>} />
+            <Route path="/admin/analytics" element={<AdminRoute><AdminAnalyticsPage /></AdminRoute>} />
+
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </Layout>

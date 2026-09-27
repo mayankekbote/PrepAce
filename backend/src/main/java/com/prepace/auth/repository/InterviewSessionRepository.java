@@ -13,5 +13,8 @@ public interface InterviewSessionRepository extends JpaRepository<InterviewSessi
     Optional<InterviewSession> findByIdAndUser(UUID id, User user);
     Optional<InterviewSession> findByIdAndUserId(UUID id, UUID userId);
     List<InterviewSession> findByUserOrderByCreatedAtDesc(User user);
+    List<InterviewSession> findByUserIdOrderByCreatedAtDesc(UUID userId);
     List<InterviewSession> findByUserAndStatus(User user, SessionStatus status);
+    List<InterviewSession> findByStatus(SessionStatus status);
+    long countByStatus(SessionStatus status);
 }

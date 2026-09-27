@@ -65,6 +65,9 @@ public class User {
     @Column(name = "reset_token_expiry")
     private LocalDateTime resetTokenExpiry;
 
+    @Column(name = "role", length = 30)
+    private String role = "USER";
+
     @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
@@ -104,6 +107,7 @@ public class User {
         private String authProvider = "LOCAL";
         private String googleId;
         private boolean isEmailVerified = false;
+        private String role = "USER";
 
         public UserBuilder fullName(String fullName) { this.fullName = fullName; return this; }
         public UserBuilder email(String email) { this.email = email; return this; }
@@ -116,6 +120,7 @@ public class User {
         public UserBuilder authProvider(String authProvider) { this.authProvider = authProvider; return this; }
         public UserBuilder googleId(String googleId) { this.googleId = googleId; return this; }
         public UserBuilder isEmailVerified(boolean isEmailVerified) { this.isEmailVerified = isEmailVerified; return this; }
+        public UserBuilder role(String role) { this.role = role; return this; }
 
         public User build() {
             User user = new User();
@@ -130,6 +135,7 @@ public class User {
             user.setAuthProvider(authProvider);
             user.setGoogleId(googleId);
             user.setEmailVerified(isEmailVerified);
+            user.setRole(role != null ? role : "USER");
             return user;
         }
     }
@@ -137,6 +143,8 @@ public class User {
     // Getters and Setters
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
+    public String getRole() { return role != null ? role : "USER"; }
+    public void setRole(String role) { this.role = role; }
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }
     public String getEmail() { return email; }

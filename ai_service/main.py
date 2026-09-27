@@ -7,6 +7,9 @@ import os
 from groq import Groq
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
+import base64
+import cv2
+import numpy as np
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -484,7 +487,6 @@ async def evaluate_and_next_question(
 
     ### Evaluation & Next Question Guidelines:
     1. Evaluate candidate's answer on a 0.0 to 10.0 scale:
-       {eval_focus_instructions}
        - correctnessScore (50% weight), relevanceScore (30% weight), clarityScore (20% weight).
        - overall answerScore = (correctnessScore * 0.50) + (relevanceScore * 0.30) + (clarityScore * 0.20).
        - shortEvaluationSummary: Concise 1-2 sentence feedback.
@@ -507,7 +509,7 @@ async def evaluate_and_next_question(
         "relevanceScore": 8.0,
         "depthScore": 7.5,
         "clarityScore": 8.5,
-        "shortEvaluationSummary": "Clear explanation with strong evidence of ownership.",
+        "shortEvaluationSummary": "Clear technical explanation.",
         "detectedConcepts": ["Concept 1", "Concept 2"],
         "nextAction": "FOLLOW_UP",
         "nextQuestion": "Next question text...",
@@ -656,8 +658,104 @@ async def generate_final_feedback(
         print(f"ERROR generating final feedback in Python AI Service: {e}")
         raise HTTPException(status_code=500, detail=f"Feedback generation failed: {str(e)}")
 
+
+class ProctorFrameRequest(BaseModel):
+    image_base64: str
+
+class FaceDetectionDTO(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+
+class ProctorFrameResponse(BaseModel):
+    person_count: int
+    no_person: bool
+    multiple_persons: bool
+    out_of_frame: bool
+    faces: List[FaceDetectionDTO]
+    engine: str = "OpenCV-HaarCascade"
+
+# Initialize OpenCV cascades
+haar_face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+haar_profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_profileface.xml')
+
+@app.post("/proctor/detect-frame", response_model=ProctorFrameResponse)
+async def detect_frame_opencv(request: ProctorFrameRequest):
+    try:
+        raw_data = request.image_base64
+        if "," in raw_data:
+            raw_data = raw_data.split(",")[1]
+
+        img_bytes = base64.b64decode(raw_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img is None:
+            return ProctorFrameResponse(
+                person_count=0,
+                no_person=True,
+                multiple_persons=False,
+                out_of_frame=True,
+                faces=[]
+            )
+
+        height, width = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
+
+        # Detect frontal faces with higher minNeighbors to prevent false positives on background objects
+        detected_faces = haar_face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=8,
+            minSize=(50, 50)
+        )
+
+        # Fallback to profile face detector if no frontal faces found
+        if len(detected_faces) == 0:
+            detected_faces = haar_profile_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=10,
+                minSize=(60, 60)
+            )
+
+        face_list = []
+        out_of_frame = False
+
+        for (x, y, w, h) in detected_faces:
+            cx = x + w / 2.0
+            cy = y + h / 2.0
+
+            # Check if face center is near frame boundary (out of 5% - 95% range)
+            if cx < 0.05 * width or cx > 0.95 * width or cy < 0.05 * height or cy > 0.95 * height:
+                out_of_frame = True
+
+            face_list.append(FaceDetectionDTO(x=int(x), y=int(y), w=int(w), h=int(h)))
+
+        person_count = len(face_list)
+        no_person = (person_count == 0) or out_of_frame
+
+        return ProctorFrameResponse(
+            person_count=person_count,
+            no_person=no_person,
+            multiple_persons=person_count > 1,
+            out_of_frame=out_of_frame,
+            faces=face_list,
+            engine="OpenCV-HaarCascade"
+        )
+    except Exception as e:
+        print(f"OpenCV detect frame error: {e}")
+        return ProctorFrameResponse(
+            person_count=0,
+            no_person=True,
+            multiple_persons=False,
+            out_of_frame=True,
+            faces=[]
+        )
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-

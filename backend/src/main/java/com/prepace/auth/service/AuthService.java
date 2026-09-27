@@ -160,6 +160,7 @@ public class AuthService {
                 .targetRole(user.getTargetRole())
                 .experienceLevel(user.getExperienceLevel())
                 .resumeUrl(user.getResumeUrl())
+                .role(user.getRole() != null ? user.getRole() : "USER")
                 .profileComplete(profileComplete)
                 .build();
     }

@@ -64,6 +64,15 @@ public class InterviewSession {
     @Column(name = "topic_seeds_json", columnDefinition = "TEXT")
     private String topicSeedsJson;
 
+    @Column(name = "termination_reason", length = 255)
+    private String terminationReason;
+
+    @Column(name = "proctoring_violations_count", columnDefinition = "integer default 0")
+    private Integer proctoringViolationsCount = 0;
+
+    @Column(name = "proctoring_events_json", columnDefinition = "TEXT")
+    private String proctoringEventsJson;
+
     @Version
     private Long version;
 
@@ -134,6 +143,12 @@ public class InterviewSession {
     public void setQuestionSource(QuestionSource questionSource) { this.questionSource = questionSource; }
     public String getTopicSeedsJson() { return topicSeedsJson; }
     public void setTopicSeedsJson(String topicSeedsJson) { this.topicSeedsJson = topicSeedsJson; }
+    public String getTerminationReason() { return terminationReason; }
+    public void setTerminationReason(String terminationReason) { this.terminationReason = terminationReason; }
+    public Integer getProctoringViolationsCount() { return proctoringViolationsCount != null ? proctoringViolationsCount : 0; }
+    public void setProctoringViolationsCount(Integer proctoringViolationsCount) { this.proctoringViolationsCount = proctoringViolationsCount; }
+    public String getProctoringEventsJson() { return proctoringEventsJson; }
+    public void setProctoringEventsJson(String proctoringEventsJson) { this.proctoringEventsJson = proctoringEventsJson; }
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
     public LocalDateTime getCreatedAt() { return createdAt; }

@@ -26,6 +26,10 @@ public class InterviewSessionResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    private String terminationReason;
+    private Integer proctoringViolationsCount;
+    private String proctoringEventsJson;
+
     public InterviewSessionResponse() {}
 
     public static InterviewSessionResponse fromEntity(InterviewSession session) {
@@ -43,6 +47,9 @@ public class InterviewSessionResponse {
         dto.setQuestionSource(session.getQuestionSource());
         dto.setStartedAt(session.getStartedAt());
         dto.setCompletedAt(session.getCompletedAt());
+        dto.setTerminationReason(session.getTerminationReason());
+        dto.setProctoringViolationsCount(session.getProctoringViolationsCount());
+        dto.setProctoringEventsJson(session.getProctoringEventsJson());
         dto.setCreatedAt(session.getCreatedAt());
         dto.setUpdatedAt(session.getUpdatedAt());
         return dto;
@@ -73,6 +80,12 @@ public class InterviewSessionResponse {
     public void setStartedAt(LocalDateTime startedAt) { this.startedAt = startedAt; }
     public LocalDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(LocalDateTime completedAt) { this.completedAt = completedAt; }
+    public String getTerminationReason() { return terminationReason; }
+    public void setTerminationReason(String terminationReason) { this.terminationReason = terminationReason; }
+    public Integer getProctoringViolationsCount() { return proctoringViolationsCount; }
+    public void setProctoringViolationsCount(Integer proctoringViolationsCount) { this.proctoringViolationsCount = proctoringViolationsCount; }
+    public String getProctoringEventsJson() { return proctoringEventsJson; }
+    public void setProctoringEventsJson(String proctoringEventsJson) { this.proctoringEventsJson = proctoringEventsJson; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

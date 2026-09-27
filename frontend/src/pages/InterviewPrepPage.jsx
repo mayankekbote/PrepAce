@@ -40,10 +40,7 @@ const InterviewPrepPage = () => {
         throw new Error(createRes.message || "Failed to initialize interview session.");
       }
 
-      // 2. Start Session
-      await interviewApi.startSession(sessionId);
-
-      // 3. Navigate to Voice Room
+      // 2. Navigate to Voice Room (Session is in CREATED state until camera/mic permissions are granted)
       navigate(`/interview/${sessionId}`);
     } catch (err) {
       console.error("Session Start Error:", err);

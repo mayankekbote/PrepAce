@@ -40,4 +40,19 @@ export const interviewApi = {
     const response = await api.get("/interviews");
     return response.data;
   },
+
+  recordProctoringEvents: async (sessionId, events) => {
+    const response = await api.post(`/interviews/${sessionId}/proctoring/events`, events);
+    return response.data;
+  },
+
+  terminateSession: async (sessionId, reason, events = []) => {
+    const response = await api.post(`/interviews/${sessionId}/terminate`, { reason, events });
+    return response.data;
+  },
+
+  getProctoringEvents: async (sessionId) => {
+    const response = await api.get(`/interviews/${sessionId}/proctoring/events`);
+    return response.data;
+  },
 };

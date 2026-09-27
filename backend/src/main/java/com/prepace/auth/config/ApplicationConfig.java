@@ -24,11 +24,14 @@ public class ApplicationConfig {
     @Bean
     public UserDetailsService userDetailsService() {
         return username -> userRepository.findByEmail(username)
-                .map(user -> org.springframework.security.core.userdetails.User
-                        .withUsername(user.getEmail())
-                        .password(user.getPasswordHash() != null ? user.getPasswordHash() : "")
-                        .authorities("USER")
-                        .build())
+                .map(user -> {
+                    String role = user.getRole() != null ? user.getRole() : "USER";
+                    return org.springframework.security.core.userdetails.User
+                            .withUsername(user.getEmail())
+                            .password(user.getPasswordHash() != null ? user.getPasswordHash() : "")
+                            .authorities("ROLE_" + role, role)
+                            .build();
+                })
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
     }
 

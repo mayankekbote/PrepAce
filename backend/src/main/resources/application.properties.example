@@ -1,7 +1,7 @@
 # Database Configuration
 spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/prepace_db}
 spring.datasource.username=${SPRING_DATASOURCE_USERNAME:postgres}
-spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:your_password}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:admin123}
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
 spring.jpa.show-sql=true
@@ -18,7 +18,7 @@ spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 
 # JWT Configuration
-app.jwt.secret=${JWT_SECRET:your_jwt_secret}
+app.jwt.secret=${JWT_SECRET:c3VwZXJzZWNyZXRqd3RzZWNyZXRrZXlmb3JwcmVwYWNlYXBwbGljYXRpb24yMDI2}
 app.jwt.expiration=604800000
 
 # File Upload Configuration
