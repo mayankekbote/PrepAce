@@ -274,53 +274,122 @@ async def generate_interview_questions(
     if x_internal_secret and x_internal_secret != INTERNAL_SECRET:
         raise HTTPException(status_code=401, detail="Invalid internal service secret")
 
-    print(f"DEBUG: Generating questions for role: {request.candidateProfile.targetRole}, type: {request.interviewType}, difficulty: {request.difficulty}, weakQuestionsCount: {len(request.weakQuestionsToRetry or [])}")
+    print(
+        f"DEBUG: Generating questions for role: {request.candidateProfile.targetRole}, "
+        f"type: {request.interviewType}, difficulty: {request.difficulty}, "
+        f"weakQuestionsCount: {len(request.weakQuestionsToRetry or [])}"
+    )
 
-    skills_str = json.dumps(request.candidateProfile.skills or {})
-    projects_str = json.dumps(request.candidateProfile.projects or [])
+    skills = request.candidateProfile.skills or {}
+    projects = request.candidateProfile.projects or []
+    skills_str = json.dumps(skills)
+    projects_str = json.dumps(projects)
     itype = request.interviewType.upper()
 
-    weak_questions_instruction = ""
-    if request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0:
-        weak_list_json = json.dumps([wq.model_dump() for wq in request.weakQuestionsToRetry])
-        weak_questions_instruction = f"""
-        ### Unanswered / Weak Questions from Candidate's Previous Tests (Score < 3.5 or Skipped):
-        {weak_list_json}
+    # ------------------------------------------------------------
+    # Q1 IS DETERMINISTIC
+    #
+    # We do NOT ask the LLM to decide what the initial question is.
+    # This guarantees that the first question is grounded in the
+    # candidate's actual resume/project data.
+    #
+    # If weak questions exist, retry the strongest weak question.
+    # Otherwise, build Q1 directly from the first resume project.
+    # ------------------------------------------------------------
 
-        CRITICAL REQUIREMENT FOR SEQUENCE 1:
-        The candidate struggled with or skipped the above question(s) in their past test.
-        For sequence 1 (first question), you MUST re-ask or re-frame the top weak question from this list to check if they have improved.
-        Set "questionKind": "RETRY" for sequence 1.
-        """
+    weak_questions = request.weakQuestionsToRetry or []
+
+    if weak_questions:
+        top_weak = weak_questions[0]
+
+        initial_question = (
+            top_weak.questionText
+            or f"Can you explain the work you did in your {top_weak.topic or 'previous project'}?"
+        )
+        initial_topic = top_weak.topic or "Previous Weak Area"
+        initial_kind = "RETRY"
+
+    elif itype == "TECHNICAL" and projects:
+        project = projects[0]
+
+        # Support both the current stored profile format and the
+        # original resume-analysis format.
+        project_name = (
+            project.get("title")
+            or project.get("name")
+            or "your project"
+        )
+
+        tech_stack = project.get("techStack") or project.get("technologies") or []
+        contributions = project.get("contributions") or []
+
+        if isinstance(tech_stack, str):
+            tech_stack = [tech_stack]
+
+        if isinstance(contributions, str):
+            contributions = [contributions]
+
+        first_contribution = (
+            contributions[0]
+            if contributions
+            else None
+        )
+
+        if first_contribution:
+            initial_question = (
+                f"In your {project_name}, you mentioned {first_contribution} "
+                f"Can you walk me through how you implemented this and explain "
+                f"your specific contribution?"
+            )
+        elif tech_stack:
+            initial_question = (
+                f"Can you walk me through your {project_name} project? "
+                f"I see you used {', '.join(tech_stack[:4])}. "
+                f"What was the problem you were solving, and what exactly did you build?"
+            )
+        else:
+            initial_question = (
+                f"Can you walk me through your {project_name} project, "
+                f"including the problem it solved and your specific technical contribution?"
+            )
+
+        initial_topic = project_name
+        initial_kind = "INITIAL"
+
+    elif itype == "HR":
+        initial_question = (
+            f"To start, please walk me through your background and the experiences "
+            f"that are most relevant to the {request.candidateProfile.targetRole} role."
+        )
+        initial_topic = "Introduction & Background Summary"
+        initial_kind = "INITIAL"
+
+    elif itype == "MANAGERIAL" and projects:
+        project = projects[0]
+        project_name = project.get("title") or project.get("name") or "your project"
+
+        initial_question = (
+            f"Let's start with your {project_name} project. "
+            f"Can you describe what you were responsible for, the main challenge "
+            f"you faced, and how you handled it?"
+        )
+        initial_topic = project_name
+        initial_kind = "INITIAL"
+
+    else:
+        initial_question = (
+            f"Can you walk me through your most significant technical project "
+            f"and your specific contribution to it?"
+        )
+        initial_topic = "Project Experience"
+        initial_kind = "INITIAL"
 
     if itype == "HR":
         type_specific_guidance = """
-        ### HR Round Focus Guidelines & Core Questions Bank:
-        You should draw from or tailor questions inspired by these 20 Core HR Questions and their evaluation goals:
-        1. Tell me about yourself. (Evaluates communication skills and ability to summarize background)
-        2. Why do you want to work for our company? (Assesses research and genuine interest in the organization)
-        3. Why are you leaving your current job? (Looks for professionalism and positive reasoning)
-        4. What are your greatest strengths? (Measures self-awareness and relevance to the role)
-        5. What is your biggest weakness? (Evaluates honesty, self-improvement, and accountability)
-        6. Where do you see yourself in 5 years? (Assesses career goals and alignment with the company)
-        7. Why should we hire you? (Tests ability to communicate unique value)
-        8. Describe a challenging situation at work and how you handled it. (Evaluates problem-solving and resilience)
-        9. Tell me about a time you worked in a team. (Assesses collaboration and interpersonal skills)
-        10. Tell me about a conflict with a coworker and how you resolved it. (Measures conflict resolution and emotional intelligence)
-        11. How do you handle pressure or tight deadlines? (Evaluates time management and stress management)
-        12. Describe a time you made a mistake. What did you learn? (Looks for accountability and continuous learning)
-        13. What motivates you? (Assesses whether your motivations fit the role)
-        14. How do you prioritize your work? (Evaluates organizational and planning skills)
-        15. Are you willing to relocate or travel? (Determines flexibility based on job requirements)
-        16. What are your salary expectations? (Assesses whether expectations align with the budget)
-        17. Tell me about an achievement you're proud of. (Evaluates impact, initiative, and results)
-        18. How do you handle feedback or criticism? (Measures adaptability and willingness to improve)
-        19. Do you have any questions for us? (Assesses curiosity and interest in the role)
-        20. Why should we not hire you? / What makes you different from other candidates? (Evaluates self-awareness, honesty, and confidence)
-
-        - For freshers/early career: Adapt these questions to incorporate college projects, internships, group activities, academic choices, and learning experiences.
-        - For experienced candidates: Adapt these questions to incorporate work history, career transitions, professional relationships, handling stress, and workplace ethics.
-        - Focus on realistic behavioral and situational questions requiring specific actions and lessons learned.
+        ### HR Round Focus Guidelines:
+        - Ask direct, natural behavioral questions.
+        - For freshers, use college projects, internships, academics and learning experiences.
+        - Avoid technical textbook questions.
         """
         default_topic_seeds = [
             "Introduction & Background Summary",
@@ -329,28 +398,43 @@ async def generate_interview_questions(
             "Teamwork, Conflict & Problem Solving",
             "Pressure, Prioritization & Growth"
         ]
-        fallback_topic = "Introduction & Background Summary"
-        fallback_text = f"Welcome to your HR round for the {request.candidateProfile.targetRole} role. To start off, please tell me about yourself, summarizing your background and key experiences relevant to this position."
 
     elif itype == "MANAGERIAL":
         type_specific_guidance = """
-        ### Managerial Round (MR) Focus Guidelines:
-        - Generate questions focusing on project ownership, accountability, leadership potential, teamwork, decision-making under ambiguity, prioritization, handling tight deadlines, mistakes/failures, escalation vs independence, trade-offs between speed and quality, and stakeholder communication.
-        - Create realistic workplace scenarios (e.g. scope changes, competing priorities, incomplete information, difficult teammates, trade-offs).
-        - Evaluate whether the candidate takes responsibility vs shifting blame, knows when to act independently vs escalate, and communicates risks effectively.
+        ### Managerial Round Focus Guidelines:
+        - Focus on project ownership, accountability, teamwork, ambiguity,
+          prioritization, deadlines, mistakes, decision-making and trade-offs.
+        - Ground questions in the candidate's actual projects whenever possible.
         """
-        default_topic_seeds = ["Project Ownership & Accountability", "Prioritization & Time Management", "Handling Ambiguity & Failure", "Conflict Resolution & Stakeholders", "Decision Making & Trade-offs"]
-        fallback_topic = "Project Ownership & Accountability"
-        fallback_text = f"Welcome to your Managerial Round for the {request.candidateProfile.targetRole} role. Can you describe a scenario where you took full ownership of a challenging deliverable under tight deadlines or changing requirements?"
+        default_topic_seeds = [
+            "Project Ownership & Accountability",
+            "Prioritization & Time Management",
+            "Handling Ambiguity & Failure",
+            "Conflict Resolution & Stakeholders",
+            "Decision Making & Trade-offs"
+        ]
 
-    else: # TECHNICAL
+    else:
         type_specific_guidance = """
         ### Technical Round Focus Guidelines:
-        - Generate questions prioritizing technical implementation, system design, architectural trade-offs, performance optimization, and claimed skills/projects.
+        - Every question must be grounded in the candidate's actual resume.
+        - Reference a concrete project, technology, framework, tool,
+          contribution or implementation decision from the candidate profile.
+        - Prefer WHY/HOW/implementation questions over textbook definitions.
+        - Do not ask about technologies that are absent from the profile.
+        - For project questions, use the actual project name.
+        - For architecture questions, refer to the candidate's actual architecture
+          or technology choices.
+        - For optimization/debugging questions, identify a concrete component,
+          bottleneck or implementation decision from the candidate's projects.
         """
-        default_topic_seeds = ["System Architecture & Design", "Performance Optimization", "Database Management", "Security & Reliability", "Code Quality & Patterns"]
-        fallback_topic = "Technical Architecture"
-        fallback_text = f"Can you walk me through your recent project work for the {request.candidateProfile.targetRole} role, highlighting your key technical contributions?"
+        default_topic_seeds = [
+            "Resume Project Architecture",
+            "Technical Implementation",
+            "Backend & API Design",
+            "Performance & Optimization",
+            "Debugging & Engineering Trade-offs"
+        ]
 
     prompt = f"""
     {get_system_persona(itype)}
@@ -360,78 +444,70 @@ async def generate_interview_questions(
     Difficulty Level: {request.difficulty} (EASY, MEDIUM, HARD)
     Total Questions Requested: {request.totalQuestions}
 
-    ### Candidate Profile (Extracted from Resume):
+    ### Candidate Profile Extracted From Resume:
     - Categorized Skills: {skills_str}
     - Significant Projects & Contributions: {projects_str}
 
     {type_specific_guidance}
-    {weak_questions_instruction}
 
-### CRITICAL QUESTION QUALITY RULES:
-1. Every technical question MUST be grounded in the candidate's actual resume profile.
-2. Every question MUST reference at least one concrete item from the candidate's:
-   - projects
-   - technologies
-   - frameworks
-   - tools
-   - stated contributions
-   - implementation decisions
-3. DO NOT ask generic textbook questions when a resume-specific question can be asked.
-4. DO NOT ask about a technology that is not present in the candidate profile.
-5. Questions must sound like a real interviewer who has read the candidate's resume carefully.
-6. For project-based questions, mention the actual project name whenever possible.
-7. For architecture questions, ask about the candidate's actual architecture or technology choices.
-8. For implementation questions, ask WHY or HOW the candidate implemented something rather than simply asking for definitions.
-9. For optimization questions, identify a concrete component, bottleneck, or technical decision from the candidate's project.
-10. For security/database/backend questions, connect the question to an actual technology or implementation mentioned in the profile.
-11. Avoid generic questions such as:
-    - "What is REST API?"
-    - "What is OOP?"
-    - "What are the advantages of microservices?"
-    - "How would you improve scalability?"
-    unless the candidate's resume specifically provides context that makes the question relevant.
-12. Prefer questions such as:
-    - "In your [PROJECT], why did you use [TECHNOLOGY] for [COMPONENT]?"
-    - "You mentioned [TECHNOLOGY] in [PROJECT]. How did you implement [FEATURE]?"
-    - "In [PROJECT], what problem did you face with [COMPONENT], and how did you solve it?"
-    - "Why did you choose [TECHNOLOGY A] instead of [TECHNOLOGY B] for [PROJECT]?"
-13. Questions should progressively increase in depth:
-    Q1: project understanding / candidate contribution
-    Q2: implementation details
-    Q3: architecture / design decision
-    Q4: debugging / failure scenario
-    Q5: optimization / scalability / trade-off
-14. If multiple projects exist, distribute questions across relevant projects instead of repeatedly asking generic questions about the same topic.
+    ### CRITICAL RULES FOR QUESTIONS 2+
+    1. Every question must be grounded in something actually present in the candidate profile.
+    2. Every technical question must reference a concrete project, technology,
+       framework, tool, contribution or implementation decision.
+    3. Do not invent projects, technologies or contributions.
+    4. Do not ask generic textbook questions when a resume-specific question is possible.
+    5. Questions should sound like a real interviewer who has read the resume.
+    6. Progress from implementation understanding to architecture, debugging,
+       optimization and trade-offs.
+    7. Use actual project names and technologies from the profile.
+    8. If multiple projects exist, distribute questions across relevant projects.
 
-### TASK:
-Generate {request.totalQuestions} interview questions that feel like a real technical interviewer has studied this candidate's resume.
+    IMPORTANT:
+    - Question 1 is ALREADY PROVIDED by the application.
+    - DO NOT generate or replace Question 1.
+    - Generate only questions for sequences 2 through {request.totalQuestions}.
+    - Every generated question must be resume-specific.
 
-For every generated question, verify internally:
-- Is it based on something actually present in the candidate profile?
-- Does it reference a concrete project, technology, contribution, or implementation?
-- Could this question have been asked to almost any software candidate? If yes, rewrite it to make it resume-specific.
+    ### Task:
+    Generate topic seeds and questions for sequences 2 through {request.totalQuestions}.
 
-If weak questions were provided above, sequence 1 MUST be a RETRY question.
-Otherwise, sequence 1 is an INITIAL question.
-
-The questions should progress from understanding the candidate's actual work to deeper implementation, architecture, debugging, and trade-off questions.
-    ### Return ONLY valid JSON in this exact structure:
+    ### Return ONLY valid JSON:
     {{
         "topicSeeds": {json.dumps(default_topic_seeds)},
         "questions": [
             {{
-                "sequence": 1,
-                "topic": "{fallback_topic}",
-                "questionText": "Question text...",
+                "sequence": 2,
+                "topic": "Resume-specific topic",
+                "questionText": "Resume-specific question...",
                 "questionType": "OPEN_ENDED",
                 "difficulty": "{request.difficulty}",
-                "questionKind": "{"RETRY" if (request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0) else "INITIAL"}"
+                "questionKind": "FOLLOW_UP"
             }}
         ]
     }}
     """
 
+    # Start with the guaranteed resume-based Q1.
+    questions = [
+        {
+            "sequence": 1,
+            "topic": initial_topic,
+            "questionText": initial_question,
+            "questionType": "OPEN_ENDED",
+            "difficulty": request.difficulty,
+            "questionKind": initial_kind
+        }
+    ]
+
+    # If only one question is requested, there is nothing else to generate.
+    if request.totalQuestions <= 1:
+        return {
+            "topicSeeds": default_topic_seeds,
+            "questions": questions
+        }
+
     max_retries = 1
+
     for attempt in range(max_retries + 1):
         try:
             completion = client.chat.completions.create(
@@ -439,37 +515,144 @@ The questions should progress from understanding the candidate's actual work to 
                 messages=[
                     {
                         "role": "system",
-                        "content": f"{get_system_persona(itype)} You output strict, valid JSON matching the requested schema."
+                        "content": (
+                            f"{get_system_persona(itype)} "
+                            "You output strict, valid JSON matching the requested schema."
+                        )
                     },
                     {"role": "user", "content": prompt}
                 ],
                 response_format={"type": "json_object"}
             )
+
             data = json.loads(completion.choices[0].message.content)
-            return data
+
+            generated_questions = data.get("questions") or []
+
+            # Never allow the LLM to overwrite Q1.
+            # Also normalize sequences so the application receives Q2, Q3, ...
+            normalized_questions = []
+
+            for index, question in enumerate(generated_questions, start=2):
+                if index > request.totalQuestions:
+                    break
+
+                question["sequence"] = index
+
+                # The LLM-generated questions are not the deterministic initial question.
+                if question.get("questionKind") == "INITIAL":
+                    question["questionKind"] = "FOLLOW_UP"
+
+                normalized_questions.append(question)
+
+            questions.extend(normalized_questions)
+
+            # If the model returned too few questions, fill the remaining
+            # slots with deterministic resume-grounded questions.
+            while len(questions) < request.totalQuestions:
+                sequence = len(questions) + 1
+
+                if projects:
+                    project = projects[(sequence - 2) % len(projects)]
+                    project_name = (
+                        project.get("title")
+                        or project.get("name")
+                        or "your project"
+                    )
+
+                    tech_stack = project.get("techStack") or []
+                    contributions = project.get("contributions") or []
+
+                    if isinstance(tech_stack, str):
+                        tech_stack = [tech_stack]
+
+                    if isinstance(contributions, str):
+                        contributions = [contributions]
+
+                    if contributions:
+                        fallback_question = (
+                            f"In your {project_name}, how did you implement "
+                            f"{contributions[(sequence - 2) % len(contributions)]}, "
+                            f"and what technical trade-off did you have to consider?"
+                        )
+                    elif tech_stack:
+                        fallback_question = (
+                            f"In your {project_name}, how did you use "
+                            f"{tech_stack[(sequence - 2) % len(tech_stack)]}, "
+                            f"and what challenge did you face with it?"
+                        )
+                    else:
+                        fallback_question = (
+                            f"What was the most technically challenging part of "
+                            f"your {project_name}, and how did you solve it?"
+                        )
+
+                    fallback_topic = project_name
+
+                else:
+                    fallback_question = (
+                        f"What technical decision from your project work would "
+                        f"you revisit today, and why?"
+                    )
+                    fallback_topic = "Project Technical Decisions"
+
+                questions.append({
+                    "sequence": sequence,
+                    "topic": fallback_topic,
+                    "questionText": fallback_question,
+                    "questionType": "OPEN_ENDED",
+                    "difficulty": request.difficulty,
+                    "questionKind": "FOLLOW_UP"
+                })
+
+            return {
+                "topicSeeds": data.get("topicSeeds") or default_topic_seeds,
+                "questions": questions
+            }
+
         except Exception as e:
-            print(f"ERROR generating interview questions (Attempt {attempt + 1}): {e}")
+            print(
+                f"ERROR generating interview questions "
+                f"(Attempt {attempt + 1}): {e}"
+            )
+
             if attempt == max_retries:
-                fallback_kind = "INITIAL"
-                if request.weakQuestionsToRetry and len(request.weakQuestionsToRetry) > 0:
-                    top_weak = request.weakQuestionsToRetry[0]
-                    fallback_topic = top_weak.topic or fallback_topic
-                    fallback_text = top_weak.questionText or fallback_text
-                    fallback_kind = "RETRY"
+                # Q1 is still valid even if the LLM fails.
+                while len(questions) < request.totalQuestions:
+                    sequence = len(questions) + 1
+
+                    if projects:
+                        project = projects[(sequence - 2) % len(projects)]
+                        project_name = (
+                            project.get("title")
+                            or project.get("name")
+                            or "your project"
+                        )
+
+                        fallback_question = (
+                            f"What was the most technically challenging part of "
+                            f"your {project_name}, and how did you solve it?"
+                        )
+                    else:
+                        fallback_question = (
+                            "What was the most challenging technical problem "
+                            "you solved in your project work, and how did you solve it?"
+                        )
+
+                    questions.append({
+                        "sequence": sequence,
+                        "topic": project_name if projects else "Project Technical Decisions",
+                        "questionText": fallback_question,
+                        "questionType": "OPEN_ENDED",
+                        "difficulty": request.difficulty,
+                        "questionKind": "FOLLOW_UP"
+                    })
 
                 return {
                     "topicSeeds": default_topic_seeds,
-                    "questions": [
-                        {
-                            "sequence": 1,
-                            "topic": fallback_topic,
-                            "questionText": fallback_text,
-                            "questionType": "OPEN_ENDED",
-                            "difficulty": request.difficulty,
-                            "questionKind": fallback_kind
-                        }
-                    ]
+                    "questions": questions
                 }
+
 
 @app.post("/evaluate-and-next-question", response_model=EvaluationAndNextQuestionResponse)
 async def evaluate_and_next_question(
