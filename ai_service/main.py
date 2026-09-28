@@ -367,19 +367,54 @@ async def generate_interview_questions(
     {type_specific_guidance}
     {weak_questions_instruction}
 
-    ### CRITICAL QUESTION QUALITY RULES:
-    1. Write genuine, authentic, realistic interview questions as spoken by a senior human interviewer.
-    2. NEVER include artificial prefixes, robotic headers, or generic template phrases such as "No problem, let's switch to another topic: ..." or "Can you walk me through your understanding of core concepts in ...".
-    3. For HR: Ask direct, natural behavioral questions (e.g. tell me about yourself, strengths/weaknesses, teamwork conflicts, handling pressure/stress, motivation for the role, receiving criticism).
-    4. For MANAGERIAL: Ask direct situational questions (e.g. project ownership under tight deadlines, handling scope ambiguity, balancing speed vs quality, handling mistakes, stakeholder alignment).
-    5. For TECHNICAL: Ask direct architectural & engineering scenario questions based on their projects and claimed skills.
+### CRITICAL QUESTION QUALITY RULES:
+1. Every technical question MUST be grounded in the candidate's actual resume profile.
+2. Every question MUST reference at least one concrete item from the candidate's:
+   - projects
+   - technologies
+   - frameworks
+   - tools
+   - stated contributions
+   - implementation decisions
+3. DO NOT ask generic textbook questions when a resume-specific question can be asked.
+4. DO NOT ask about a technology that is not present in the candidate profile.
+5. Questions must sound like a real interviewer who has read the candidate's resume carefully.
+6. For project-based questions, mention the actual project name whenever possible.
+7. For architecture questions, ask about the candidate's actual architecture or technology choices.
+8. For implementation questions, ask WHY or HOW the candidate implemented something rather than simply asking for definitions.
+9. For optimization questions, identify a concrete component, bottleneck, or technical decision from the candidate's project.
+10. For security/database/backend questions, connect the question to an actual technology or implementation mentioned in the profile.
+11. Avoid generic questions such as:
+    - "What is REST API?"
+    - "What is OOP?"
+    - "What are the advantages of microservices?"
+    - "How would you improve scalability?"
+    unless the candidate's resume specifically provides context that makes the question relevant.
+12. Prefer questions such as:
+    - "In your [PROJECT], why did you use [TECHNOLOGY] for [COMPONENT]?"
+    - "You mentioned [TECHNOLOGY] in [PROJECT]. How did you implement [FEATURE]?"
+    - "In [PROJECT], what problem did you face with [COMPONENT], and how did you solve it?"
+    - "Why did you choose [TECHNOLOGY A] instead of [TECHNOLOGY B] for [PROJECT]?"
+13. Questions should progressively increase in depth:
+    Q1: project understanding / candidate contribution
+    Q2: implementation details
+    Q3: architecture / design decision
+    Q4: debugging / failure scenario
+    Q5: optimization / scalability / trade-off
+14. If multiple projects exist, distribute questions across relevant projects instead of repeatedly asking generic questions about the same topic.
 
-    ### Task:
-    1. Generate an array of at least 5 relevant topic seeds ('topicSeeds').
-    2. Generate an array of {request.totalQuestions} interview questions ('questions') tailored to the interview focus type ({request.interviewType}).
-       If weak questions were provided above, sequence 1 MUST be a RETRY question ("questionKind": "RETRY"). Otherwise, sequence 1 is an INITIAL question.
-       For subsequent sequences (2 to {request.totalQuestions}), generate tailored behavioral, situational, or technical trade-off questions.
+### TASK:
+Generate {request.totalQuestions} interview questions that feel like a real technical interviewer has studied this candidate's resume.
 
+For every generated question, verify internally:
+- Is it based on something actually present in the candidate profile?
+- Does it reference a concrete project, technology, contribution, or implementation?
+- Could this question have been asked to almost any software candidate? If yes, rewrite it to make it resume-specific.
+
+If weak questions were provided above, sequence 1 MUST be a RETRY question.
+Otherwise, sequence 1 is an INITIAL question.
+
+The questions should progress from understanding the candidate's actual work to deeper implementation, architecture, debugging, and trade-off questions.
     ### Return ONLY valid JSON in this exact structure:
     {{
         "topicSeeds": {json.dumps(default_topic_seeds)},
