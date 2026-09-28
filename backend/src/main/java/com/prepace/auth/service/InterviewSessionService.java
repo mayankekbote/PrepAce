@@ -26,10 +26,21 @@ import java.util.stream.Collectors;
 @Service
 public class InterviewSessionService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(InterviewSessionService.class);
+    private static final Logger LOGGER =
+            LoggerFactory.getLogger(InterviewSessionService.class);
+
     private static final Set<String> SKIP_PHRASES = Set.of(
-            "i don't know", "dont know", "don't know", "not sure", "no idea",
-            "idk", "pass", "skip", "no clue", "can't recall", "cant recall"
+            "i don't know",
+            "dont know",
+            "don't know",
+            "not sure",
+            "no idea",
+            "idk",
+            "pass",
+            "skip",
+            "no clue",
+            "can't recall",
+            "cant recall"
     );
 
     private final InterviewSessionRepository sessionRepository;
@@ -54,9 +65,17 @@ public class InterviewSessionService {
     }
 
     @Transactional
-    public InterviewStateResponse createSession(CreateSessionRequest request, String userEmail) {
+    public InterviewStateResponse createSession(
+            CreateSessionRequest request,
+            String userEmail
+    ) {
+
         User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userEmail));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found: " + userEmail
+                        )
+                );
 
         InterviewSession session = new InterviewSession(
                 user,
@@ -67,105 +86,280 @@ public class InterviewSessionService {
                 request.getDurationMinutes()
         );
 
-        List<com.prepace.auth.dto.ai.WeakQuestionDto> weakQuestions = getActiveWeakQuestionsForUser(user, session.getInterviewType());
-        InterviewQuestion initialQuestion = aiEngineClient.generateInitialQuestion(session, weakQuestions);
+        /*
+         * IMPORTANT:
+         *
+         * This is a NORMAL NEW INTERVIEW.
+         *
+         * Previously we were automatically loading all old weak questions
+         * here. That caused FastAPI to receive things like:
+         *
+         * weakQuestionsCount: 22
+         *
+         * and consequently the AI kept retrying/repeating old questions.
+         *
+         * For a normal interview, start fresh.
+         *
+         * A separate "Retry Weak Questions" mode can be implemented later
+         * if required.
+         */
+
+        InterviewQuestion initialQuestion =
+                aiEngineClient.generateInitialQuestion(
+                        session,
+                        Collections.emptyList()
+                );
+
         session.addQuestion(initialQuestion);
 
-        InterviewSession savedSession = sessionRepository.save(session);
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
         return InterviewStateResponse.fromEntity(savedSession);
     }
 
-    private List<com.prepace.auth.dto.ai.WeakQuestionDto> getActiveWeakQuestionsForUser(User user, com.prepace.auth.entity.enums.InterviewType interviewType) {
+    /*
+     * Kept for future use if you create a dedicated
+     * "Retry Weak Questions" interview mode.
+     */
+    private List<com.prepace.auth.dto.ai.WeakQuestionDto>
+    getActiveWeakQuestionsForUser(
+            User user,
+            com.prepace.auth.entity.enums.InterviewType interviewType
+    ) {
+
         try {
-            List<InterviewQuestion> weakQuestions = questionRepository.findWeakQuestionsByUserAndType(user, interviewType, 3.5);
+
+            List<InterviewQuestion> weakQuestions =
+                    questionRepository.findWeakQuestionsByUserAndType(
+                            user,
+                            interviewType,
+                            3.5
+                    );
+
             if (weakQuestions == null || weakQuestions.isEmpty()) {
                 return Collections.emptyList();
             }
 
-            List<InterviewQuestion> masteredQuestions = questionRepository.findMasteredQuestionsByUserAndType(user, interviewType, 3.5);
-            Set<String> masteredKeys = (masteredQuestions != null) ? masteredQuestions.stream()
-                    .map(q -> (q.getTopic() + ":" + q.getQuestionText()).toLowerCase().trim())
-                    .collect(Collectors.toSet()) : Collections.emptySet();
+            List<InterviewQuestion> masteredQuestions =
+                    questionRepository.findMasteredQuestionsByUserAndType(
+                            user,
+                            interviewType,
+                            3.5
+                    );
 
-            List<com.prepace.auth.dto.ai.WeakQuestionDto> result = new ArrayList<>();
+            Set<String> masteredKeys =
+                    (masteredQuestions != null)
+                            ? masteredQuestions.stream()
+                            .map(q ->
+                                    (q.getTopic()
+                                            + ":"
+                                            + q.getQuestionText())
+                                            .toLowerCase()
+                                            .trim()
+                            )
+                            .collect(Collectors.toSet())
+                            : Collections.emptySet();
+
+            List<com.prepace.auth.dto.ai.WeakQuestionDto> result =
+                    new ArrayList<>();
+
             Set<String> added = new HashSet<>();
 
             for (InterviewQuestion q : weakQuestions) {
-                String key = (q.getTopic() + ":" + q.getQuestionText()).toLowerCase().trim();
-                if (!masteredKeys.contains(key) && !added.contains(key)) {
+
+                String key =
+                        (q.getTopic()
+                                + ":"
+                                + q.getQuestionText())
+                                .toLowerCase()
+                                .trim();
+
+                if (!masteredKeys.contains(key)
+                        && !added.contains(key)) {
+
                     added.add(key);
-                    Double prevScore = (q.getAnswer() != null && q.getAnswer().getEvaluation() != null)
-                            ? q.getAnswer().getEvaluation().getScore() : 0.0;
-                    result.add(new com.prepace.auth.dto.ai.WeakQuestionDto(q.getTopic(), q.getQuestionText(), prevScore));
+
+                    Double prevScore =
+                            (q.getAnswer() != null
+                                    && q.getAnswer().getEvaluation() != null)
+                                    ? q.getAnswer()
+                                    .getEvaluation()
+                                    .getScore()
+                                    : 0.0;
+
+                    result.add(
+                            new com.prepace.auth.dto.ai.WeakQuestionDto(
+                                    q.getTopic(),
+                                    q.getQuestionText(),
+                                    prevScore
+                            )
+                    );
                 }
             }
+
             return result;
+
         } catch (Exception e) {
-            LOGGER.warn("Failed to fetch active weak questions for user {}: {}", user.getEmail(), e.getMessage());
+
+            LOGGER.warn(
+                    "Failed to fetch active weak questions for user {}: {}",
+                    user.getEmail(),
+                    e.getMessage()
+            );
+
             return Collections.emptyList();
         }
     }
 
     @Transactional
-    public InterviewStateResponse startSession(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse startSession(
+            UUID sessionId,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
 
         if (session.getStatus() != SessionStatus.CREATED) {
-            throw new InvalidSessionStateException("Cannot start interview: session is currently in " + session.getStatus() + " status.");
+
+            throw new InvalidSessionStateException(
+                    "Cannot start interview: session is currently in "
+                            + session.getStatus()
+                            + " status."
+            );
         }
 
         session.setStatus(SessionStatus.IN_PROGRESS);
         session.setStartedAt(LocalDateTime.now());
         session.setCurrentQuestionIndex(1);
 
-        InterviewSession savedSession = sessionRepository.save(session);
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
         return InterviewStateResponse.fromEntity(savedSession);
     }
 
     @Transactional(readOnly = true)
-    public InterviewStateResponse getInterviewState(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse getInterviewState(
+            UUID sessionId,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
         return InterviewStateResponse.fromEntity(session);
     }
 
     @Transactional
-    public InterviewStateResponse submitAnswer(UUID sessionId, SubmitAnswerRequest request, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse submitAnswer(
+            UUID sessionId,
+            SubmitAnswerRequest request,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
 
         if (session.getStatus() == SessionStatus.CREATED) {
-            throw new InvalidSessionStateException("Interview session has not been started yet. Call /start endpoint first.");
-        }
-        if (session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.ABANDONED) {
-            throw new InvalidSessionStateException("Interview session is finalized (" + session.getStatus() + "). Further answer submissions are rejected.");
+
+            throw new InvalidSessionStateException(
+                    "Interview session has not been started yet. "
+                            + "Call /start endpoint first."
+            );
         }
 
-        Integer currentIndex = session.getCurrentQuestionIndex();
-        InterviewQuestion currentQuestion = questionRepository.findBySessionAndSequence(session, currentIndex)
-                .orElseThrow(() -> new ResourceNotFoundException("Active question at sequence " + currentIndex + " not found for session"));
+        if (session.getStatus() == SessionStatus.COMPLETED
+                || session.getStatus() == SessionStatus.ABANDONED) {
 
-        // IDEMPOTENCY CHECK: If answer has ALREADY been submitted, return existing state idempotently
+            throw new InvalidSessionStateException(
+                    "Interview session is finalized ("
+                            + session.getStatus()
+                            + "). Further answer submissions are rejected."
+            );
+        }
+
+        Integer currentIndex =
+                session.getCurrentQuestionIndex();
+
+        InterviewQuestion currentQuestion =
+                questionRepository
+                        .findBySessionAndSequence(
+                                session,
+                                currentIndex
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Active question at sequence "
+                                                + currentIndex
+                                                + " not found for session"
+                                )
+                        );
+
+        // Idempotency check
         if (currentQuestion.getAnswer() != null) {
-            LOGGER.info("Idempotent answer submission detected for session {}, sequence {}", sessionId, currentIndex);
+
+            LOGGER.info(
+                    "Idempotent answer submission detected for session {}, sequence {}",
+                    sessionId,
+                    currentIndex
+            );
+
             return InterviewStateResponse.fromEntity(session);
         }
 
-        String answerText = request.getAnswerText() != null ? request.getAnswerText().trim() : "";
-        boolean isExplicitSkip = isSkipAnswer(answerText);
+        String answerText =
+                request.getAnswerText() != null
+                        ? request.getAnswerText().trim()
+                        : "";
+
+        boolean isExplicitSkip =
+                isSkipAnswer(answerText);
+
+        // ---------------------------------------------------------
+        // SKIP PATH
+        // ---------------------------------------------------------
 
         if (isExplicitSkip) {
-            // DETERMINISTIC SKIP PATH: 0 LLM Calls
-            LOGGER.info("Explicit skip detected for session {}, sequence {}. Handling deterministically with 0 LLM calls.", sessionId, currentIndex);
-            CandidateAnswer answer = new CandidateAnswer(currentQuestion, session, answerText, request.getInputMode(), request.getConfidenceScore(), request.getAudioUrl());
 
-            QuestionEvaluation eval = new QuestionEvaluation(
-                    answer,
-                    0.0,
-                    0.0,
-                    0.0,
-                    0.0,
-                    "Candidate indicated lack of knowledge or skipped the question.",
-                    "Review foundational concepts for this topic."
+            LOGGER.info(
+                    "Explicit skip detected for session {}, sequence {}. "
+                            + "Handling deterministically with 0 LLM calls.",
+                    sessionId,
+                    currentIndex
             );
+
+            CandidateAnswer answer =
+                    new CandidateAnswer(
+                            currentQuestion,
+                            session,
+                            answerText,
+                            request.getInputMode(),
+                            request.getConfidenceScore(),
+                            request.getAudioUrl()
+                    );
+
+            QuestionEvaluation eval =
+                    new QuestionEvaluation(
+                            answer,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            "Candidate indicated lack of knowledge or skipped the question.",
+                            "Review foundational concepts for this topic."
+                    );
+
             eval.setRelevanceScore(0.0);
             eval.setNextAction("SWITCH_TOPIC");
             eval.setDetectedConcepts("Skipped Question");
@@ -174,173 +368,423 @@ public class InterviewSessionService {
             currentQuestion.setAnswer(answer);
 
             if (currentIndex < session.getTotalQuestions()) {
-                InterviewQuestion nextQ = aiEngineClient.generateNextQuestion(session, session.getQuestions(), answer);
-                nextQ.setQuestionKind(QuestionKind.TOPIC_SWITCH);
+
+                InterviewQuestion nextQ =
+                        aiEngineClient.generateNextQuestion(
+                                session,
+                                session.getQuestions(),
+                                answer
+                        );
+
+                nextQ.setQuestionKind(
+                        QuestionKind.TOPIC_SWITCH
+                );
+
                 session.addQuestion(nextQ);
-                session.setCurrentQuestionIndex(currentIndex + 1);
+
+                session.setCurrentQuestionIndex(
+                        currentIndex + 1
+                );
+
             } else {
-                session.setStatus(SessionStatus.COMPLETED);
-                session.setCompletedAt(LocalDateTime.now());
-                InterviewResult result = aiEngineClient.generateInterviewResult(session, session.getQuestions());
+
+                session.setStatus(
+                        SessionStatus.COMPLETED
+                );
+
+                session.setCompletedAt(
+                        LocalDateTime.now()
+                );
+
+                InterviewResult result =
+                        aiEngineClient.generateInterviewResult(
+                                session,
+                                session.getQuestions()
+                        );
+
                 session.setResult(result);
             }
 
-            InterviewSession savedSession = sessionRepository.save(session);
-            return InterviewStateResponse.fromEntity(savedSession);
-        }
+            InterviewSession savedSession =
+                    sessionRepository.save(session);
 
-        // MEANINGFUL ANSWER PATH: Single FastAPI LLM Call
-        CandidateAnswer answer = new CandidateAnswer(currentQuestion, session, answerText, request.getInputMode(), request.getConfidenceScore(), request.getAudioUrl());
-        EvaluationAndNextResult aiResult = aiEngineClient.evaluateAndGenerateNext(session, currentQuestion, answer, session.getQuestions());
-
-        answer.setEvaluation(aiResult.getEvaluation());
-        currentQuestion.setAnswer(answer);
-
-        if (currentIndex < session.getTotalQuestions()) {
-            InterviewQuestion nextQuestion = aiResult.getNextQuestion();
-            int followUpDepth = getFollowUpDepthForTopic(session.getQuestions(), currentQuestion.getTopic());
-
-            // GUARDRAIL OVERRIDE: Max 2 follow-ups per topic
-            if (followUpDepth >= 2 && "FOLLOW_UP".equalsIgnoreCase(aiResult.getNextAction())) {
-                LOGGER.info("Max follow-up depth reached (2) for topic '{}' in session {}. Overriding LLM to force topic switch.", currentQuestion.getTopic(), sessionId);
-                String nextTopic = selectNextUnusedTopic(session);
-                nextQuestion.setTopic(nextTopic);
-                nextQuestion.setQuestionKind(QuestionKind.TOPIC_SWITCH);
-                nextQuestion.setQuestionText("We've covered that topic in depth! Let's switch to a new topic: " + nextTopic + ". " + nextQuestion.getQuestionText());
-            }
-
-            session.addQuestion(nextQuestion);
-            session.setCurrentQuestionIndex(currentIndex + 1);
-        } else {
-            // Session question budget reached
-            session.setStatus(SessionStatus.COMPLETED);
-            session.setCompletedAt(LocalDateTime.now());
-            InterviewResult result = aiEngineClient.generateInterviewResult(session, session.getQuestions());
-            session.setResult(result);
-        }
-
-        InterviewSession savedSession = sessionRepository.save(session);
-        return InterviewStateResponse.fromEntity(savedSession);
-    }
-
-    @Transactional
-    public InterviewStateResponse completeSession(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
-
-        // IDEMPOTENCY CHECK: If already COMPLETED and result exists, return existing state cleanly
-        if (session.getStatus() == SessionStatus.COMPLETED && session.getResult() != null) {
-            LOGGER.info("Idempotent complete session call detected for session {}. Returning existing result.", sessionId);
-            return InterviewStateResponse.fromEntity(session);
-        }
-
-        if (session.getStatus() == SessionStatus.ABANDONED) {
-            throw new InvalidSessionStateException("Interview session has been abandoned. Cannot complete an abandoned session.");
-        }
-
-        session.setStatus(SessionStatus.COMPLETED);
-        if (session.getCompletedAt() == null) {
-            session.setCompletedAt(LocalDateTime.now());
-        }
-
-        if (session.getResult() == null) {
-            InterviewResult result = aiEngineClient.generateInterviewResult(session, session.getQuestions());
-            session.setResult(result);
-        }
-
-        InterviewSession savedSession = sessionRepository.save(session);
-        return InterviewStateResponse.fromEntity(savedSession);
-    }
-
-    @Transactional(readOnly = true)
-    public InterviewResultResponse getInterviewResult(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
-
-        if (session.getStatus() != SessionStatus.COMPLETED || session.getResult() == null) {
-            throw new com.prepace.auth.exception.SessionNotCompletedException(
-                    "Interview session " + sessionId + " is not completed yet. Current status: " + session.getStatus()
+            return InterviewStateResponse.fromEntity(
+                    savedSession
             );
         }
 
-        return InterviewResultResponse.fromEntity(session.getResult());
+        // ---------------------------------------------------------
+        // NORMAL ANSWER PATH
+        // ---------------------------------------------------------
+
+        CandidateAnswer answer =
+                new CandidateAnswer(
+                        currentQuestion,
+                        session,
+                        answerText,
+                        request.getInputMode(),
+                        request.getConfidenceScore(),
+                        request.getAudioUrl()
+                );
+
+        EvaluationAndNextResult aiResult =
+                aiEngineClient.evaluateAndGenerateNext(
+                        session,
+                        currentQuestion,
+                        answer,
+                        session.getQuestions()
+                );
+
+        answer.setEvaluation(
+                aiResult.getEvaluation()
+        );
+
+        currentQuestion.setAnswer(answer);
+
+        if (currentIndex < session.getTotalQuestions()) {
+
+            InterviewQuestion nextQuestion =
+                    aiResult.getNextQuestion();
+
+            int followUpDepth =
+                    getFollowUpDepthForTopic(
+                            session.getQuestions(),
+                            currentQuestion.getTopic()
+                    );
+
+            // -----------------------------------------------------
+            // MAX 2 FOLLOW-UPS PER TOPIC
+            // -----------------------------------------------------
+
+            if (followUpDepth >= 2
+                    && "FOLLOW_UP".equalsIgnoreCase(
+                    aiResult.getNextAction()
+            )) {
+
+                LOGGER.info(
+                        "Max follow-up depth reached (2) for topic '{}' "
+                                + "in session {}. Overriding LLM to force topic switch.",
+                        currentQuestion.getTopic(),
+                        sessionId
+                );
+
+                String nextTopic =
+                        selectNextUnusedTopic(session);
+
+                nextQuestion.setTopic(nextTopic);
+
+                nextQuestion.setQuestionKind(
+                        QuestionKind.TOPIC_SWITCH
+                );
+
+                nextQuestion.setQuestionText(
+                        "We've covered that topic in depth! "
+                                + "Let's switch to a new topic: "
+                                + nextTopic
+                                + ". "
+                                + nextQuestion.getQuestionText()
+                );
+            }
+
+            session.addQuestion(nextQuestion);
+
+            session.setCurrentQuestionIndex(
+                    currentIndex + 1
+            );
+
+        } else {
+
+            session.setStatus(
+                    SessionStatus.COMPLETED
+            );
+
+            session.setCompletedAt(
+                    LocalDateTime.now()
+            );
+
+            InterviewResult result =
+                    aiEngineClient.generateInterviewResult(
+                            session,
+                            session.getQuestions()
+                    );
+
+            session.setResult(result);
+        }
+
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
+        return InterviewStateResponse.fromEntity(
+                savedSession
+        );
     }
 
     @Transactional
-    public InterviewStateResponse abandonSession(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse completeSession(
+            UUID sessionId,
+            String userEmail
+    ) {
 
-        if (session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.ABANDONED) {
-            throw new InvalidSessionStateException("Interview session is already finalized in status: " + session.getStatus());
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
+        if (session.getStatus() == SessionStatus.COMPLETED
+                && session.getResult() != null) {
+
+            LOGGER.info(
+                    "Idempotent complete session call detected "
+                            + "for session {}. Returning existing result.",
+                    sessionId
+            );
+
+            return InterviewStateResponse.fromEntity(
+                    session
+            );
         }
 
-        session.setStatus(SessionStatus.ABANDONED);
-        session.setCompletedAt(LocalDateTime.now());
+        if (session.getStatus() == SessionStatus.ABANDONED) {
 
-        InterviewSession savedSession = sessionRepository.save(session);
-        return InterviewStateResponse.fromEntity(savedSession);
+            throw new InvalidSessionStateException(
+                    "Interview session has been abandoned. "
+                            + "Cannot complete an abandoned session."
+            );
+        }
+
+        session.setStatus(
+                SessionStatus.COMPLETED
+        );
+
+        if (session.getCompletedAt() == null) {
+
+            session.setCompletedAt(
+                    LocalDateTime.now()
+            );
+        }
+
+        if (session.getResult() == null) {
+
+            InterviewResult result =
+                    aiEngineClient.generateInterviewResult(
+                            session,
+                            session.getQuestions()
+                    );
+
+            session.setResult(result);
+        }
+
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
+        return InterviewStateResponse.fromEntity(
+                savedSession
+        );
     }
 
     @Transactional(readOnly = true)
-    public List<InterviewSessionResponse> getUserSessions(String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userEmail));
+    public InterviewResultResponse getInterviewResult(
+            UUID sessionId,
+            String userEmail
+    ) {
 
-        return sessionRepository.findByUserOrderByCreatedAtDesc(user).stream()
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
+        if (session.getStatus() != SessionStatus.COMPLETED
+                || session.getResult() == null) {
+
+            throw new com.prepace.auth.exception.SessionNotCompletedException(
+                    "Interview session "
+                            + sessionId
+                            + " is not completed yet. Current status: "
+                            + session.getStatus()
+            );
+        }
+
+        return InterviewResultResponse.fromEntity(
+                session.getResult()
+        );
+    }
+
+    @Transactional
+    public InterviewStateResponse abandonSession(
+            UUID sessionId,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
+        if (session.getStatus() == SessionStatus.COMPLETED
+                || session.getStatus() == SessionStatus.ABANDONED) {
+
+            throw new InvalidSessionStateException(
+                    "Interview session is already finalized in status: "
+                            + session.getStatus()
+            );
+        }
+
+        session.setStatus(
+                SessionStatus.ABANDONED
+        );
+
+        session.setCompletedAt(
+                LocalDateTime.now()
+        );
+
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
+        return InterviewStateResponse.fromEntity(
+                savedSession
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewSessionResponse> getUserSessions(
+            String userEmail
+    ) {
+
+        User user =
+                userRepository.findByEmail(userEmail)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found: "
+                                                + userEmail
+                                )
+                        );
+
+        return sessionRepository
+                .findByUserOrderByCreatedAtDesc(user)
+                .stream()
                 .map(InterviewSessionResponse::fromEntity)
                 .collect(Collectors.toList());
     }
 
-    private InterviewSession getSessionAndVerifyOwner(UUID sessionId, String userEmail) {
-        InterviewSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Interview session not found with id: " + sessionId));
+    private InterviewSession getSessionAndVerifyOwner(
+            UUID sessionId,
+            String userEmail
+    ) {
 
-        if (!session.getUser().getEmail().equalsIgnoreCase(userEmail)) {
-            throw new UnauthorizedAccessException("Access denied for interview session: " + sessionId);
+        InterviewSession session =
+                sessionRepository.findById(sessionId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Interview session not found with id: "
+                                                + sessionId
+                                )
+                        );
+
+        if (!session.getUser()
+                .getEmail()
+                .equalsIgnoreCase(userEmail)) {
+
+            throw new UnauthorizedAccessException(
+                    "Access denied for interview session: "
+                            + sessionId
+            );
         }
+
         return session;
     }
 
     private boolean isSkipAnswer(String text) {
-        if (text == null || text.isBlank()) return true;
-        String clean = text.toLowerCase().trim();
+
+        if (text == null || text.isBlank()) {
+            return true;
+        }
+
+        String clean =
+                text.toLowerCase().trim();
+
         if (clean.length() < 15) {
+
             for (String phrase : SKIP_PHRASES) {
-                if (clean.contains(phrase)) return true;
+
+                if (clean.contains(phrase)) {
+                    return true;
+                }
             }
         }
+
         return false;
     }
 
-    private int getFollowUpDepthForTopic(List<InterviewQuestion> questions, String currentTopic) {
-        if (questions == null || currentTopic == null) return 0;
+    private int getFollowUpDepthForTopic(
+            List<InterviewQuestion> questions,
+            String currentTopic
+    ) {
+
+        if (questions == null || currentTopic == null) {
+            return 0;
+        }
+
         int depth = 0;
+
         for (int i = questions.size() - 1; i >= 0; i--) {
-            if (currentTopic.equalsIgnoreCase(questions.get(i).getTopic())) {
+
+            if (currentTopic.equalsIgnoreCase(
+                    questions.get(i).getTopic()
+            )) {
+
                 depth++;
+
             } else {
                 break;
             }
         }
+
         return depth;
     }
 
-    private String selectNextUnusedTopic(InterviewSession session) {
-        List<String> seeds = new ArrayList<>();
+    private String selectNextUnusedTopic(
+            InterviewSession session
+    ) {
+
+        List<String> seeds =
+                new ArrayList<>();
+
         try {
+
             if (session.getTopicSeedsJson() != null) {
-                seeds = objectMapper.readValue(session.getTopicSeedsJson(), new TypeReference<List<String>>() {});
+
+                seeds =
+                        objectMapper.readValue(
+                                session.getTopicSeedsJson(),
+                                new TypeReference<List<String>>() {}
+                        );
             }
+
         } catch (Exception e) {
-            LOGGER.warn("Failed to parse topicSeedsJson: {}", e.getMessage());
+
+            LOGGER.warn(
+                    "Failed to parse topicSeedsJson: {}",
+                    e.getMessage()
+            );
         }
 
-        Set<String> coveredTopics = session.getQuestions().stream()
-                .map(InterviewQuestion::getTopic)
-                .filter(Objects::nonNull)
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
+        Set<String> coveredTopics =
+                session.getQuestions()
+                        .stream()
+                        .map(InterviewQuestion::getTopic)
+                        .filter(Objects::nonNull)
+                        .map(String::toLowerCase)
+                        .collect(Collectors.toSet());
 
         for (String seed : seeds) {
-            if (!coveredTopics.contains(seed.toLowerCase())) {
+
+            if (!coveredTopics.contains(
+                    seed.toLowerCase()
+            )) {
+
                 return seed;
             }
         }
@@ -349,102 +793,261 @@ public class InterviewSessionService {
     }
 
     @Transactional
-    public InterviewStateResponse recordProctoringEvents(UUID sessionId, List<com.prepace.auth.dto.interview.ProctoringEventRequest> requests, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse recordProctoringEvents(
+            UUID sessionId,
+            List<com.prepace.auth.dto.interview.ProctoringEventRequest> requests,
+            String userEmail
+    ) {
 
-        if (session.getStatus() == SessionStatus.TERMINATED || session.getStatus() == SessionStatus.COMPLETED || session.getStatus() == SessionStatus.ABANDONED) {
-            return InterviewStateResponse.fromEntity(session);
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
+        if (session.getStatus() == SessionStatus.TERMINATED
+                || session.getStatus() == SessionStatus.COMPLETED
+                || session.getStatus() == SessionStatus.ABANDONED) {
+
+            return InterviewStateResponse.fromEntity(
+                    session
+            );
         }
 
         if (requests == null || requests.isEmpty()) {
-            return InterviewStateResponse.fromEntity(session);
+
+            return InterviewStateResponse.fromEntity(
+                    session
+            );
         }
 
-        List<Map<String, Object>> eventsLog = new ArrayList<>();
-        if (session.getProctoringEventsJson() != null && !session.getProctoringEventsJson().isBlank()) {
+        List<Map<String, Object>> eventsLog =
+                new ArrayList<>();
+
+        if (session.getProctoringEventsJson() != null
+                && !session.getProctoringEventsJson().isBlank()) {
+
             try {
-                eventsLog = objectMapper.readValue(session.getProctoringEventsJson(), new TypeReference<List<Map<String, Object>>>() {});
+
+                eventsLog =
+                        objectMapper.readValue(
+                                session.getProctoringEventsJson(),
+                                new TypeReference<List<Map<String, Object>>>() {}
+                        );
+
             } catch (Exception e) {
-                LOGGER.warn("Failed to parse existing proctoring events JSON for session {}", sessionId);
+
+                LOGGER.warn(
+                        "Failed to parse existing proctoring events JSON "
+                                + "for session {}",
+                        sessionId
+                );
             }
         }
 
-        int newViolationsCount = session.getProctoringViolationsCount() != null ? session.getProctoringViolationsCount() : 0;
+        int newViolationsCount =
+                session.getProctoringViolationsCount() != null
+                        ? session.getProctoringViolationsCount()
+                        : 0;
 
-        for (com.prepace.auth.dto.interview.ProctoringEventRequest req : requests) {
-            ProctoringEvent entity = new ProctoringEvent(
-                    session,
-                    req.getType(),
-                    req.getSeverity(),
-                    parseTimestamp(req.getTimestamp()),
-                    req.getDuration(),
-                    req.getConfidence(),
-                    req.getMetadata()
-            );
+        for (
+                com.prepace.auth.dto.interview.ProctoringEventRequest req
+                : requests
+        ) {
+
+            ProctoringEvent entity =
+                    new ProctoringEvent(
+                            session,
+                            req.getType(),
+                            req.getSeverity(),
+                            parseTimestamp(req.getTimestamp()),
+                            req.getDuration(),
+                            req.getConfidence(),
+                            req.getMetadata()
+                    );
+
             proctoringEventRepository.save(entity);
 
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", entity.getId() != null ? entity.getId().toString() : UUID.randomUUID().toString());
-            map.put("type", req.getType());
-            map.put("severity", req.getSeverity() != null ? req.getSeverity() : "WARNING");
-            map.put("timestamp", req.getTimestamp() != null ? req.getTimestamp() : LocalDateTime.now().toString());
-            map.put("duration", req.getDuration());
-            map.put("confidence", req.getConfidence());
-            map.put("metadata", req.getMetadata());
+            Map<String, Object> map =
+                    new HashMap<>();
+
+            map.put(
+                    "id",
+                    entity.getId() != null
+                            ? entity.getId().toString()
+                            : UUID.randomUUID().toString()
+            );
+
+            map.put(
+                    "type",
+                    req.getType()
+            );
+
+            map.put(
+                    "severity",
+                    req.getSeverity() != null
+                            ? req.getSeverity()
+                            : "WARNING"
+            );
+
+            map.put(
+                    "timestamp",
+                    req.getTimestamp() != null
+                            ? req.getTimestamp()
+                            : LocalDateTime.now().toString()
+            );
+
+            map.put(
+                    "duration",
+                    req.getDuration()
+            );
+
+            map.put(
+                    "confidence",
+                    req.getConfidence()
+            );
+
+            map.put(
+                    "metadata",
+                    req.getMetadata()
+            );
+
             eventsLog.add(map);
 
-            if (!"INFO".equalsIgnoreCase(req.getSeverity())) {
+            if (!"INFO".equalsIgnoreCase(
+                    req.getSeverity()
+            )) {
+
                 newViolationsCount++;
             }
         }
 
-        session.setProctoringViolationsCount(newViolationsCount);
+        session.setProctoringViolationsCount(
+                newViolationsCount
+        );
+
         try {
-            session.setProctoringEventsJson(objectMapper.writeValueAsString(eventsLog));
+
+            session.setProctoringEventsJson(
+                    objectMapper.writeValueAsString(
+                            eventsLog
+                    )
+            );
+
         } catch (Exception e) {
-            LOGGER.warn("Failed to serialize proctoring events log for session {}", sessionId);
+
+            LOGGER.warn(
+                    "Failed to serialize proctoring events log "
+                            + "for session {}",
+                    sessionId
+            );
         }
 
-        InterviewSession savedSession = sessionRepository.save(session);
-        return InterviewStateResponse.fromEntity(savedSession);
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
+        return InterviewStateResponse.fromEntity(
+                savedSession
+        );
     }
 
     @Transactional
-    public InterviewStateResponse terminateSession(UUID sessionId, TerminateInterviewRequest request, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
+    public InterviewStateResponse terminateSession(
+            UUID sessionId,
+            TerminateInterviewRequest request,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
 
         if (session.getStatus() == SessionStatus.TERMINATED) {
-            return InterviewStateResponse.fromEntity(session);
+
+            return InterviewStateResponse.fromEntity(
+                    session
+            );
         }
 
-        if (request != null && request.getEvents() != null && !request.getEvents().isEmpty()) {
-            recordProctoringEvents(sessionId, request.getEvents(), userEmail);
-            session = sessionRepository.findById(sessionId).orElse(session);
+        if (request != null
+                && request.getEvents() != null
+                && !request.getEvents().isEmpty()) {
+
+            recordProctoringEvents(
+                    sessionId,
+                    request.getEvents(),
+                    userEmail
+            );
+
+            session =
+                    sessionRepository
+                            .findById(sessionId)
+                            .orElse(session);
         }
 
-        session.setStatus(SessionStatus.TERMINATED);
-        session.setTerminationReason(request != null && request.getReason() != null && !request.getReason().isBlank()
-                ? request.getReason() : "PROCTORING_VIOLATION");
+        session.setStatus(
+                SessionStatus.TERMINATED
+        );
+
+        session.setTerminationReason(
+                request != null
+                        && request.getReason() != null
+                        && !request.getReason().isBlank()
+                        ? request.getReason()
+                        : "PROCTORING_VIOLATION"
+        );
+
         if (session.getCompletedAt() == null) {
-            session.setCompletedAt(LocalDateTime.now());
+
+            session.setCompletedAt(
+                    LocalDateTime.now()
+            );
         }
 
-        InterviewSession savedSession = sessionRepository.save(session);
-        LOGGER.info("Interview session {} TERMINATED. Reason: {}", sessionId, savedSession.getTerminationReason());
-        return InterviewStateResponse.fromEntity(savedSession);
+        InterviewSession savedSession =
+                sessionRepository.save(session);
+
+        LOGGER.info(
+                "Interview session {} TERMINATED. Reason: {}",
+                sessionId,
+                savedSession.getTerminationReason()
+        );
+
+        return InterviewStateResponse.fromEntity(
+                savedSession
+        );
     }
 
     @Transactional(readOnly = true)
-    public List<ProctoringEvent> getProctoringEvents(UUID sessionId, String userEmail) {
-        InterviewSession session = getSessionAndVerifyOwner(sessionId, userEmail);
-        return proctoringEventRepository.findBySessionOrderByTimestampAsc(session);
+    public List<ProctoringEvent> getProctoringEvents(
+            UUID sessionId,
+            String userEmail
+    ) {
+
+        InterviewSession session =
+                getSessionAndVerifyOwner(
+                        sessionId,
+                        userEmail
+                );
+
+        return proctoringEventRepository
+                .findBySessionOrderByTimestampAsc(session);
     }
 
     private LocalDateTime parseTimestamp(String str) {
-        if (str == null || str.isBlank()) return LocalDateTime.now();
+
+        if (str == null || str.isBlank()) {
+            return LocalDateTime.now();
+        }
+
         try {
+
             return LocalDateTime.parse(str);
+
         } catch (Exception e) {
+
             return LocalDateTime.now();
         }
     }
