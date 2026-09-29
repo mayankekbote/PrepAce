@@ -65,6 +65,10 @@ class AnalysisResponse(BaseModel):
     questions: List[Question]
     telemetry: Optional[TelemetryData] = None
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_resume(file: UploadFile = File(...), targetRole: str = "Software Engineer"):
     overall_start = time.perf_counter()
